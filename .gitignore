@@ -1,0 +1,80 @@
+# ==========================================
+# Sistema Operativo (Mac / Windows)
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==========================================
+# Entorno y Secretos
+# ==========================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ==========================================
+# Python
+# ==========================================
+# Caché y archivos compilados
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Entornos virtuales
+venv/
+env/
+.venv/
+.env_python/
+
+# Herramientas de testing y dependencias
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Construcción y paquetes
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+
+# ==========================================
+# Visual Studio y VS Code
+# ==========================================
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Visual Studio 
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ==========================================
+# Docker & Kafka (Volúmenes y Datos Locales)
+# ==========================================
+# Ignorar carpetas donde se monten volúmenes locales de Kafka/Zookeeper
+# Ajusta estos nombres según lo que pongas en tu docker-compose.yml
+kafka_data/
+zookeeper_data/
+docker_data/
+data/
