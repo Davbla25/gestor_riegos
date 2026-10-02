@@ -35,6 +35,6 @@ def desempaquetar(trama_bytes): #recibe una trama y la decodifica, comprobando l
         if not (trama_bytes[0:1] == STX and trama_bytes[-2:-1] == ETX): #comprobamos que la trama cumpla el formato deseado
              raise ValueError("La tama no tiene el formato estandar <STX><DATA><ETX><LRC>")
         lrc = calcular_lrc(trama_bytes[1:-2])
-        if not lrc == trama_bytes[-1:]:
+        if not lrc == trama_bytes[-1:]: #si el LRC no coincide se ha corrompido el mensaje por el camino
              raise ValueError("Mensaje dañado, el LRC no coincide")
-        return trama_bytes[1:-2].decode('utf-8')
+        return trama_bytes[1:-2].decode('utf-8') #devolcemos un string con el mensajes
