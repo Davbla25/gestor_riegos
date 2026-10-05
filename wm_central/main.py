@@ -114,12 +114,13 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion):
 
     match accion:
         case "ESTADO":
+            conexion.send(common.protocol.ACK)
             print(f"[ESTADO] la estación {argumentos[1]} se encuentra en el estado: {argumentos[2]}")
        
         case "REGISTRO":
             db_manager.registrar_estacion(argumentos[1], argumentos[2])
             print(f"[REGISTRO]: anotada la estación {argumentos[1]} en {argumentos[2]}")
-            enviar_ack(conexion, "Estación correctamente dada de alta en el sistema")
+            comprobar_ack(conexion, "Estación correctamente dada de alta en el sistema")
             #Nos guardamos la conexión en un diccionario para después poder acceder a ella desde la sección de Kafka
             conexiones_abiertas[argumentos[1]]= conexion  
 
@@ -152,9 +153,8 @@ def tratar_mensaje_operario(mensaje):
             else: 
                 if estado == "DISPONIBLE":
                     conexion_estacion = conexiones_abiertas[argumentos[2]]
-                    enviar_ack (conexion_estacion,f"INICIAR_RIEGO#{argumentos[2]}")
+                    comprobar_ack (conexion_estacion,f"INICIAR_RIEGO#{argumentos[2]}")
                     print(f"[PETICION DE RIEGO] La estación {argumentos[2]}, ha empezado a regar")
-
 
          case "PETICION_PARADA":
              print(f"[INICIO RIEGO]: la estación {argumentos[1]} comienza el riego")
@@ -167,7 +167,7 @@ def tratar_mensaje_operario(mensaje):
              print(f"([ERROR DE MENSAJE] el mensaje: {mensaje} enviado por: {argumentos[1]}, no sigue la convención especificada")
 
 #función que vamos a usar para comprobar que el mensaje se ha enviado correctamente
-def enviar_ack(conexion, mensaje):
+def comprobar_ack(conexion, mensaje):
     #convertiemoms el mensaje de string a byte
     paquete = common.protocol.empaquetar(mensaje)
     #vamos a dar 3 intentos de reenvio en caso de fallo
