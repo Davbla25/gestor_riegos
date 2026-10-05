@@ -41,3 +41,36 @@ def registrar_estacion(id_estacion, ubicacion):
     cursor.close()
     conexion.commit()
     conexion.close()
+
+def registrar_operario(id_operario, ubicacion):
+     #Hacemos conexión con la base de datos, si no existe la creamos
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    #insertamos el operario, si existe simplemente modificamos los datos
+    cursor.execute("INSERT OR REPLACE INTO  operarios (id, nombre) VALUES (?, ?)",
+                   (id_operario, ubicacion))
+    #cerramos conexión
+    cursor.close()
+    conexion.commit()
+    conexion.close()   
+
+def existe_operario(id_operario):
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("SELECT id FROM operarios WHERE id=  ?", (id_operario,))
+    resultado = cursor.fetchone()
+    cursor.close()
+    conexion.close()
+    return resultado is not None
+
+def obtener_estado(id_estacion):
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("SELECT estado FROM estaciones WHERE id = ?", (id_estacion,))
+    resultado = cursor.fetchone()
+    cursor.close()
+    conexion.close()
+    if resultado:
+        return resultado[0]
+    else:
+        return None
