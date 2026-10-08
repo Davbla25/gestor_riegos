@@ -38,3 +38,24 @@ def desempaquetar(trama_bytes): #recibe una trama y la decodifica, comprobando l
         if not lrc == trama_bytes[-1:]:
              raise ValueError("Mensaje dañado, el LRC no coincide")
         return trama_bytes[1:-2].decode('utf-8')
+
+#Funcion que se usa para asegurarnos de que se leen correctamente las tramas una a una y no se solapan o fragmentan
+def leer_trama(conexion):
+    #leemos el primer byte
+    byte = conexion.recv(1)
+    #si el byte es un byte de mensaje unico lo devolvemos
+    if byte == ENQ or byte == ACK or byte == NACK:
+        return byte
+    #si empieza una cadena, entramos en un bucle para recivir solo esa cadena entera
+    elif byte == STX:
+        trama = b'\x02'
+        #vamos añadiendo byte a byte
+        while byte := conexion.recv(1):
+            #si el byte es el de fin de cadena solo pedimos un byte más que será el LRC
+            if byte == ETX:
+                trama += byte+ conexion.recv(1)
+                return trama
+            trama += byte
+    else:
+        return None
+     
