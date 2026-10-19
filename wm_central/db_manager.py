@@ -11,6 +11,7 @@ def iniciar_bd():
     cursor.execute('''CREATE TABLE IF NOT EXISTS estaciones
     (id TEXT PRIMARY KEY ,
     ubicacion TEXT,
+    operario_actual TEXT,
     estado TEXT CHECK( estado IN ('DISPONIBLE', 'FUGA', 'PARADA', 'REGANDO', 'DESCONECTADA')))''' )
     #El estado solo puede estar en determinados valores indicados en la documentación
 
@@ -18,7 +19,7 @@ def iniciar_bd():
         (id TEXT PRIMARY KEY ,
         nombre TEXT )''' )
     #al iniciar la central, debe mostrar todas las estaciones registradas. El estado no lo conoce, por los borramos
-    cursor.execute("UPDATE estaciones SET  estado = 'DESCONECTADA' ")
+    cursor.execute("UPDATE estaciones SET  estado = 'DESCONECTADA', operario_actual = NULL ")
     #guardamos la lista de estaciones
     cursor.execute('''SELECT id, ubicacion FROM estaciones ''')
     estaciones = cursor.fetchall()
@@ -42,6 +43,9 @@ def registrar_estacion(id_estacion, ubicacion):
     conexion.commit()
     conexion.close()
 
+#########################################################################
+# FUNCIONES DE OPERARIO
+#########################################################################
 def registrar_operario(id_operario, ubicacion):
      #Hacemos conexión con la base de datos, si no existe la creamos
     conexion = sqlite3.connect(ruta_bd)
@@ -63,6 +67,28 @@ def existe_operario(id_operario):
     conexion.close()
     return resultado is not None
 
+def asignar_operario(id_estacion, id_operario):
+    #Guarda el operario en la BD cuando mandamos la petición de riego
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("UPDATE estaciones SET operario_actual = ? WHERE id = ?", (id_operario, id_estacion))
+    conexion.commit()
+    conexion.close()
+
+def obtener_operario(id_estacion):
+    #Lee quién es el operario actual de una estación para poder notificarle por Kafka
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("SELECT operario_actual FROM estaciones WHERE id = ?", (id_estacion,))
+    resultado = cursor.fetchone()
+    conexion.close()
+    
+    # Devolvemos el nombre si existe, o None si la columna estaba vacía/NULL
+    return resultado[0] if resultado and resultado[0] else None
+
+#########################################################################
+# FUNCIONES DE CAMBIO DE ESTADO
+#########################################################################
 def obtener_estado(id_estacion):
     conexion = sqlite3.connect(ruta_bd)
     cursor = conexion.cursor()
@@ -86,7 +112,7 @@ def bloquear_estacion(id_estacion):
 def cambiar_estado_riego(id_estacion):
     conexion = sqlite3.connect(ruta_bd)
     cursor = conexion.cursor()
-    cursor.execute("UPDATE estaciones SET  estado = 'REGANDO' WHERE id = ?", (id_estacion,))
+    cursor.execute("UPDATE estaciones SET estado = 'REGANDO' WHERE id = ?", (id_estacion, ))
     cursor.close()
     conexion.commit()
     conexion.close()
