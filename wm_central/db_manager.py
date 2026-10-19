@@ -74,3 +74,43 @@ def obtener_estado(id_estacion):
         return resultado[0]
     else:
         return None
+
+def bloquear_estacion(id_estacion):
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("UPDATE estaciones SET  estado = 'PARADA' WHERE id = ?", (id_estacion,))
+    cursor.close()
+    conexion.commit()
+    conexion.close()
+
+def cambiar_estado_riego(id_estacion):
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("UPDATE estaciones SET  estado = 'REGANDO' WHERE id = ?", (id_estacion,))
+    cursor.close()
+    conexion.commit()
+    conexion.close()
+
+def cambiar_estado_desconectada(id_estacion):
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("UPDATE estaciones SET  estado = 'DESCONECTADA' WHERE id = ?", (id_estacion,))
+    cursor.close()
+    conexion.commit()
+    conexion.close()
+
+def cambiar_estado_disponible(id_estacion):
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("UPDATE estaciones SET  estado = 'DISPONIBLE' WHERE id = ?", (id_estacion,))
+    cursor.close()
+    conexion.commit()
+    conexion.close()
+
+def cambiar_estado_fuga(id_estacion):
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("UPDATE estaciones SET  estado = 'FUGA' WHERE id = ?", (id_estacion,))
+    cursor.close()
+    conexion.commit()
+    conexion.close()
