@@ -49,7 +49,7 @@ def WM_Central():
 
     #creamos el productor de kafka para contestar a los usuarios
     global productor_respuestas 
-    productor_respuestas = KafkaProducer('respuesta_central', bootstrap_servers= [ip_kafka],value_serializer=lambda m: m.encode('utf-8'))
+    productor_respuestas = KafkaProducer(bootstrap_servers= [ip_kafka],value_serializer=lambda m: m.encode('utf-8'))
 
     #creamos un hilo para manejar kafka y lo iniciamos
     hilo_kafka = threading.Thread(target=iniciar_kafka, args=(ip_kafka,))
@@ -77,69 +77,83 @@ def WM_Central():
 def manejar_hilo(conexion, direccion):
     #creamos una cola donde kafka guardará los mensajes para que sean enviados a la estación conveniente
     buzon_salida = queue.Queue()
-    # Leemos el primer mensaje para el saludo inicial
-    trama_inicial = common.protocol.leer_trama(conexion)
+    #creamos una variable para guardar el id de la estación por si se corta la conexión
+    id_estacion_actual = None
+    try:
+        #vamos a establecer un tiempo limite de espera de un segundo y medio
+        conexion.settimeout(1.5)
+        # Leemos el primer mensaje para el saludo inicial
+        trama_inicial = common.protocol.leer_trama(conexion)
 
-    #Bloque para comprobar que seguimos el protocolo 
-    if trama_inicial != common.protocol.ENQ:
-        # Mensaje claro por consola indicando el rechazo
-        print(f"[ERROR DE PROTOCOLO] Conexión de {direccion} rechazada. Se esperaba <ENQ>, recibido: {trama_inicial}")
-        #enviamos un NACK al cliente
-        conexion.send(common.protocol.NACK)
+        #Bloque para comprobar que seguimos el protocolo 
+        if trama_inicial != common.protocol.ENQ:
+            # Mensaje claro por consola indicando el rechazo
+            print(f"[ERROR DE PROTOCOLO] Conexión de {direccion} rechazada. Se esperaba <ENQ>, recibido: {trama_inicial}")
+            #enviamos un NACK al cliente
+            conexion.send(common.protocol.NACK)
+            conexion.close()
+            return  # Salimos de la función para matar este hilo
+
+        #en caso de seguir el protocolo, enviamos ACK y empezamos el bucle de la conexión
+        conexion.send(common.protocol.ACK)
+        print(f"[NUEVA CONEXIÓN] Establecimiento exitoso con {direccion}")
+
+
+        #Bucle principal donde escuchamos el socket de la estación
+        while True: 
+            try:
+                trama_recibida = common.protocol.leer_trama(conexion)
+                #Si no llega información salimos del bucle (desconectamos)
+                if not trama_recibida : break
+                #desempaquetamos la trama, devolvemos ACK y pasamos a analizar el mensaje
+                mensaje_recibido = common.protocol.desempaquetar(trama_recibida)
+                print(f"[MENSAJE de {direccion}]: {mensaje_recibido}")
+                conexion.send(common.protocol.ACK)
+                #guardamos el id de la estación si manda registro
+                if mensaje_recibido.startswith("REGISTRO"):
+                    argumentos = mensaje_recibido.split('#')
+                    id_estacion_actual = argumentos[1]
+                tratar_mensaje_estacion(mensaje_recibido, direccion, conexion,  buzon_salida)
+            #Manejamos las posibles excepciones que salten
+            except socket.timeout:
+                #si pasado un segundo no recivimos nada, continúa la ejecución
+                pass
+            except ValueError as e:
+                print(f"([ERROR DE PROTOCOLO] {e})")
+                conexion.send(common.protocol.NACK)
+            except IndexError as e:
+                print(f"([ERROR DE PROTOCOLO] {e})")
+                conexion.send(common.protocol.NACK)
+            except ConnectionResetError as e:
+                print(f"([CONEXIÓN CORTADA ABRUPTAMENTE] {e})")
+                break
+
+
+            #bloque en el que manejamos la cola para Kafka
+            try:
+                #sacamos los argumentos del recado de Kafka
+                argumentos_kafka = buzon_salida.get_nowait()
+                #asignamos la accion que está en el primer bloque y mandamos a la función que toque
+                accion = argumentos_kafka[0]
+                if accion == "PETICION_RIEGO":
+                    # Le pasamos los argumentos correctos a la función
+                    iniciar_riego(argumentos_kafka[2], conexion, argumentos_kafka[1])
+                        
+                elif accion == "PETICION_PARADA":
+                    fin_riego(argumentos_kafka[2], conexion, argumentos_kafka[1]) 
+
+            except queue.Empty:
+                pass
+    finally:
+        #Al acabar la conexión de repente, cerramos el socket.
+        print(f"([DESCONEXIÓN] El cliente {direccion} ha cerrado conexión)")
+        #también borramos de la memoria la estación del hilo y avisamos a su operario en caso de desconexión abrupta de una estación que funcionaba
+        if id_estacion_actual:
+            if operario := db_manager.obtener_operario(id_estacion_actual):
+                notificar_operario(f"ERROR#{operario}#Se ha perdido la conexión física con la estación {id_estacion_actual}")
+            db_manager.cambiar_estado_desconectada(id_estacion_actual)
+        coleccion_buzones.pop(id_estacion_actual, None)
         conexion.close()
-        return  # Salimos de la función para matar este hilo
-
-    #en caso de seguir el protocolo, enviamos ACK y empezamos el bucle de la conexión
-    conexion.send(common.protocol.ACK)
-    print(f"[NUEVA CONEXIÓN] Establecimiento exitoso con {direccion}")
-
-    #vamos a establecer un tiempo limite de espera de un segundo
-    conexion.settimeout(1)
-
-    #Bucle principal donde escuchamos el socket de la estación
-    while True: 
-        try:
-            trama_recibida = common.protocol.leer_trama(conexion)
-            #Si no llega información salimos del bucle (desconectamos)
-            if not trama_recibida : break
-            #desempaquetamos la trama, devolvemos ACK y pasamos a analizar el mensaje
-            mensaje_recibido = common.protocol.desempaquetar(trama_recibida)
-            print(f"[MENSAJE de {direccion}]: {mensaje_recibido}")
-            conexion.send(common.protocol.ACK)
-            tratar_mensaje_estacion(mensaje_recibido, direccion, conexion,  buzon_salida)
-        #Manejamos las posibles excepciones que salten
-        except socket.timeout:
-            #si pasado un segundo no recivimos nada, continúa la ejecución
-            pass
-        except ValueError as e:
-            print(f"([ERROR DE PROTOCOLO] {e})")
-            conexion.send(common.protocol.NACK)
-        except IndexError as e:
-            print(f"([ERROR DE PROTOCOLO] {e})")
-            conexion.send(common.protocol.NACK)
-        except ConnectionResetError as e:
-            print(f"([CONEXIÓN CORTADA ABRUPTAMENTE] {e})")
-            break
-
-
-        #bloque en el que manejamos la cola para Kafka
-        try:
-            #sacamos los argumentos del recado de Kafka
-            argumentos_kafka = buzon_salida.get_nowait()
-            #asignamos la accion que está en el primer bloque y mandamos a la función que toque
-            accion = argumentos_kafka[0]
-            if accion == "PETICION_RIEGO":
-                # Le pasamos los argumentos correctos a la función
-                iniciar_riego(argumentos_kafka[2], conexion, argumentos_kafka[1])
-                    
-            elif accion == "PETICION_PARADA":
-                fin_riego(argumentos_kafka[2], conexion, argumentos_kafka[1]) 
-
-        except queue.Empty:
-            pass
-    #Al acabar la conexión de repente, cerramos el socket.
-    print(f"([DESCONEXIÓN] El cliente {direccion} ha cerrado conexión)")
-    conexion.close()
 
 
 #########################################################################
@@ -156,7 +170,7 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
             if argumentos[2] == "FUGA":
                 print(f"[ALERTA] la estación {argumentos[1]} Ha detectado una fuga")
                 db_manager.cambiar_estado_fuga(argumentos[1])
-                fin_riego(argumentos[1])
+                fin_riego(argumentos[1], conexion)
 
             print(f"[ESTADO] la estación {argumentos[1]} se encuentra en el estado: {argumentos[2]}")
             
@@ -167,6 +181,7 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
             #Nos guardamos la cola en un diccionario para después poder acceder a ella desde la sección de Kafka
             coleccion_buzones[argumentos[1]]= buzon_salida  
 
+        #Este caso se da si se pide iniciar el riego desde la propia estación
         case "INICIAR_RIEGO":
             estado = db_manager.obtener_estado(argumentos[1])
             if estado == "DISPONIBLE":
@@ -182,14 +197,18 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
                     print(f"[INICIO_RIEGO] la estación: {argumentos[1]} no está disponible")
 
 
-
         case "AUTORIZA_RIEGO":
             db_manager.cambiar_estado_riego(argumentos[1])
+            operario = db_manager.obtener_operario(argumentos[1])
             print(f"INFO#{argumentos[1]}#Riego iniciado con éxito")
+            if operario:
+                notificar_operario(f"INFO#{operario}#Riego iniciado con éxito")
 
         case "DENIEGA_RIEGO":
-            print(f"INFO#{argumentos[1]}#Solicitud de riego rechazada, motivo: {argumentos[2]}")
-            
+            print(f"ERROR#{argumentos[1]}#Solicitud de riego rechazada, motivo: {argumentos[2]}")
+            if operario := db_manager.obtener_operario(argumentos[1]):
+                notificar_operario(f"ERROR#{operario}#No se pudo iniciar el riego, motivo: {argumentos[2]}")
+
         case "METRICAS":
             print(f"[MÉTRICAS] la estación: {argumentos[1]} tiene un caudal de:{argumentos[2]} y un volumen de {argumentos[3]}")
         
@@ -197,8 +216,11 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
             estado = db_manager.obtener_estado(argumentos[1])
             if estado == "REGANDO":
                 print(f"[FIN_RIEGO] la estación: {argumentos[1]} nos avisa de que acabar de regar")
-                db_manager.cambiar_estado_disponible(argumentos[1])
-                comprobar_ack(conexion, "Fin de riego correctamente anotado")
+                if comprobar_ack(conexion, "Fin de riego correctamente anotado"):
+                    if operario := db_manager.obtener_operario(argumentos[1]):
+                        notificar_operario(f"INFO#{operario}#Riego finalizado con éxito")
+                    db_manager.cambiar_estado_disponible(argumentos[1])
+
 
             else:
                 print(f"[FIN_RIEGO] la estación: {argumentos[1]} nos avisa de que acaba de regar, pero no está regando")
@@ -214,13 +236,21 @@ def tratar_mensaje_operario(mensaje):
      argumentos = mensaje.split('#')
      #Guardamos el comando que nos ha llegado
      accion = argumentos[0]
- 
+
+     #Comprobamos que el mensaje tenga sentido
+     if len(argumentos)<2: 
+         print(f"[KAFKA ERROR] Mensaje no reconocible: {mensaje}")
+         return
+     if len(argumentos) < 3:
+         notificar_operario(f"ERROR#{argumentos[1]}#El mensaje no tiene los argumetnos suficientes")
+         return
+    
      match accion:
          case "PETICION_RIEGO":
              #primero comprobamos que el operario esté dado de alta
             if not db_manager.existe_operario(argumentos[1]):
                 print(f"[PETICION DE RIEGO] El operario {argumentos[1]}, no está dado de alta, debes hacerlo antes de hacer peticiones")
-                notificar_operario(f"[PETICION DE RIEGO] El operario {argumentos[1]}, no está dado de alta, debes hacerlo antes de hacer peticiones")
+                notificar_operario(f"ERROR#{argumentos[1]}#no está dado de alta, debes hacerlo antes de hacer peticiones")
             else:
                 if argumentos[2] in coleccion_buzones:
                     buzon = coleccion_buzones[argumentos[2]]
@@ -231,7 +261,7 @@ def tratar_mensaje_operario(mensaje):
             #primero comprobamos que el operario esté dado de alta
             if not db_manager.existe_operario(argumentos[1]):
                 print(f"[PETICION DE PARADA] El operario {argumentos[1]}, no está dado de alta, debes hacerlo antes de hacer peticiones")
-                notificar_operario(f"[PETICION DE PARADA] El operario {argumentos[1]}, no está dado de alta, debes hacerlo antes de hacer peticiones")
+                notificar_operario(f"ERROR#{argumentos[1]}#no está dado de alta, debes hacerlo antes de hacer peticiones")
             else:
                 if argumentos[2] in coleccion_buzones:
                     buzon = coleccion_buzones[argumentos[2]]
@@ -240,11 +270,11 @@ def tratar_mensaje_operario(mensaje):
          case "REGISTRO_FO":
              db_manager.registrar_operario(argumentos[1], argumentos[2])
              print(f"[ALTA DE OPERARIO] El operario: {argumentos[1]} se ha dado de alta con el nombre: {argumentos[2]} ")
-             notificar_operario(f"[ALTA DE OPERARIO] El operario: {argumentos[1]} se ha dado de alta con el nombre: {argumentos[2]} ")
+             notificar_operario(f"INFO#{argumentos[1]}#Se ha dado de alta con el nombre: {argumentos[2]} ")
          
          case _:
              print(f"([ERROR DE MENSAJE] el mensaje: {mensaje} enviado por: {argumentos[1]}, no sigue la convención especificada")
-             notificar_operario(f"([ERROR DE MENSAJE] el mensaje: {mensaje} enviado por: {argumentos[1]}, no sigue la convención especificada")
+             notificar_operario(f"(ERROR#{argumentos[1]}#El mensaje: {mensaje} enviado por: {argumentos[1]}, no sigue la convención especificada")
 
 #función que vamos a usar para comprobar que el mensaje se ha enviado correctamente
 def comprobar_ack(conexion, mensaje):
@@ -285,7 +315,9 @@ def iniciar_riego(id_estacion, conexion,  id_operario = None):
             #si la conexión tiene éxito, le cambiamos el estado a regando
             if comprobar_ack (conexion,f"INICIAR_RIEGO#{id_estacion}"):
                 print(f"[PETICION DE RIEGO] Se ha enviado la petición a la estación {id_estacion}")
-                if id_operario: notificar_operario(f"INFO#{id_operario}#Petición enviada, esperando respuesta...")
+                if id_operario: 
+                    notificar_operario(f"INFO#{id_operario}#Petición enviada, esperando respuesta...")
+                    db_manager.asignar_operario(id_estacion, id_operario)
 
             else:
                 #si falla la conexión desconectamos la estación
@@ -313,7 +345,9 @@ def fin_riego(id_estacion, conexion, id_operario = None):
             #si la conexión es exitosa la  ponemos en estado disponible
             if comprobar_ack (conexion,f"FIN_RIEGO#{id_estacion}"):
                 print(f"[PETICION DE PARADA] Se ha envido la petición de parada a la estación {id_estacion}")
-                if id_operario: notificar_operario(f"INFO#{id_operario}# Petición enviada, esperando respuesta...")
+                if id_operario: 
+                    notificar_operario(f"INFO#{id_operario}# Petición enviada, esperando respuesta...")
+
 
             else:
                 #si falla la conexión desconectamos la estación
