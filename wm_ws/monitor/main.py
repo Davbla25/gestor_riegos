@@ -75,10 +75,37 @@ def WM_WS_M():
                     print(f"[INFO] Engine conectado desde {direccion}")
                     # Hacemos que esta nueva conexión tampoco bloquee el programa
                     conexion_engine.setblocking(False)
+
+
             except BlockingIOError:
                 # Si entra aquí, es que el Engine no está intentando conectarse en este milisegundo.
                 # No pasa nada, seguimos nuestro camino.
                 pass
+
+            # ESCUCHAR LO QUE SUBE DEL ENGINE
+            try:
+                if conexion_engine is not None:
+                    trama_engine = common.protocol.leer_trama(conexion_engine)
+                    
+                    # Si el Engine nos ha enviado algo (como AUTORIZA_RIEGO o METRICAS)
+                    if trama_engine:
+                        mensaje_engine = common.protocol.desempaquetar(trama_engine)
+                        print(f"[PUENTE] Reenviando a Central: {mensaje_engine}")
+                        
+                        # 1. Le devolvemos el ACK local al Engine para liberarlo
+                        conexion_engine.send(common.protocol.ACK)
+                        
+                        # 2. Re-empaquetamos el mensaje y lo lanzamos hacia la red externa
+                        paquete_central = common.protocol.empaquetar(mensaje_engine)
+                        cliente.send(paquete_central)
+                        
+                        # 3. Esperamos que la Central confirme que lo ha recibido
+                        confirmacion = common.protocol.leer_trama(cliente)
+                        if confirmacion != common.protocol.ACK:
+                            print("[ERROR DE RED] La Central no confirmó el mensaje del Engine.")
+            except BlockingIOError:
+                # Si el Engine no está diciendo nada en este milisegundo, simplemente seguimos
+                pass  
 
             try:
                 #Comprobamos si debemos iniciar el riego
@@ -105,7 +132,7 @@ def WM_WS_M():
                     else:
                         print("[AVISO] La Central pide regar, pero el Engine no está conectado.")
 
-                if accion == "FIN_RIEGO": # Corregido a FIN_RIEGO
+                if accion == "FIN_RIEGO": 
                     print("[ORDEN RECIBIDA] Finalizando el riego por petición de la central")
                     
                     if conexion_engine is not None:
