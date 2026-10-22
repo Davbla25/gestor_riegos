@@ -1,15 +1,93 @@
 import socket
-import time 
+import time
 import common.protocol
 import os
 
 IP_CENTRAL = os.environ.get("CENTRAL_IP", "127.0.0.1")
-PUERTO_CENTRAL =int(os.environ.get("CENTRAL_PORT", 5000))
+PUERTO_CENTRAL = int(os.environ.get("CENTRAL_PORT", 5000))
 ID_ESTACION = os.environ.get("STATION_ID", "WS_DEFAULT")
 UBICACION = os.environ.get("STATION_LOCATION", "Zona Centro")
 
 IP_LOCAL = os.environ.get("MONITOR_IP", "127.0.0.1")
 PUERTO_LOCAL = int(os.environ.get("MONITOR_PORT", 5001))
+
+INTERVALO_SALUD = 1.0   # s entre comprobaciones de salud al Engine
+TIMEOUT_SALUD = 3.0     # s sin respuesta del Engine => se considera caído
+PLAZO_ACK = 1.5         # s que esperamos el ACK de la Central en cada intento
+TICK = 0.2              # timeout del socket de la Central (ritmo del bucle)
+
+
+#########################################################################
+# Funciones auxiliares
+#########################################################################
+
+def enviar_a_central(cliente, mensaje, cola):
+    """Envía una trama a la Central y espera su ACK (3 intentos).
+    Las tramas de datos que lleguen mientras esperamos se acusan y se guardan en `cola`."""
+    paquete = common.protocol.empaquetar(mensaje)
+    try:
+        for _ in range(3):
+            cliente.send(paquete)
+            limite = time.monotonic() + PLAZO_ACK
+            while True:
+                restante = limite - time.monotonic()
+                if restante <= 0:
+                    break  # se acabó el plazo: el for reintenta
+                cliente.settimeout(max(restante, 0.05))
+                try:
+                    trama = common.protocol.leer_trama(cliente)
+                except socket.timeout:
+                    break
+                if trama == common.protocol.ACK:
+                    return True
+                if trama == common.protocol.NACK:
+                    print("[ALERTA] La Central rechazó la trama (NACK), reintentando...")
+                    break
+                if trama is None:
+                    raise ConnectionError("La Central ha cerrado la conexión")
+                # Trama de datos (p. ej. una orden): la acusamos ya y la dejamos en cola
+                try:
+                    recibido = common.protocol.desempaquetar(trama)
+                except (ValueError, IndexError) as e:
+                    print(f"[ERROR DE PROTOCOLO] Trama dañada de la Central: {e}")
+                    cliente.send(common.protocol.NACK)
+                    continue
+                cliente.send(common.protocol.ACK)
+                cola.append(recibido)
+        print("[ERROR DE RED] La Central no confirmó el mensaje tras 3 intentos")
+        return False
+    finally:
+        cliente.settimeout(TICK)
+
+
+def leer_del_engine(conexion):
+    """Devuelve el mensaje del Engine, o None si no hay nada que leer ahora.
+    Lanza ConnectionError si el Engine ha cerrado o reseteado la conexión."""
+    try:
+        trama = common.protocol.leer_trama(conexion)
+    except BlockingIOError:
+        return None
+    if trama is None:
+        raise ConnectionError("El Engine ha cerrado la conexión")
+    if trama in (common.protocol.ACK, common.protocol.NACK):
+        return None
+    try:
+        return common.protocol.desempaquetar(trama)
+    except (ValueError, IndexError) as e:
+        print(f"[ERROR LOCAL] Trama dañada del Engine: {e}")
+        return None
+
+
+def reenviar_al_engine(conexion, mensaje):
+    """True si la orden se entregó al Engine; False si no hay Engine o el socket está roto."""
+    if conexion is None:
+        return False
+    try:
+        conexion.send(common.protocol.empaquetar(mensaje))
+        return True
+    except OSError:
+        return False  # el paso 2 del bucle detectará la caída y limpiará la conexión
+
 
 #########################################################################
 # Bucle principal
@@ -19,152 +97,161 @@ def WM_WS_M():
     ##########################################
     # PARTE QUE ACTÚA COMO CLIENTE (C <= M)  #
     ##########################################
-    #Creamos el socket
-    cliente = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-
+    cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     ###########################################
     # PARTE QUE ACTÚA COMO SERVIDOR (M <= E)  #
     ###########################################
-    #Creamos el socket
-    servidor = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-    servidor.bind((IP_LOCAL,PUERTO_LOCAL))
-    servidor.listen(1) #Para que escuche de 1 en 1
-
-    # IMPORTANTE: Que no bloquee el programa
-    servidor.setblocking(False) 
+    servidor = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    servidor.bind((IP_LOCAL, PUERTO_LOCAL))
+    servidor.listen(1)
+    servidor.setblocking(False)
     print(f"[INFO] Monitor escuchando al Engine en {IP_LOCAL}:{PUERTO_LOCAL}")
 
-    #Intentamos conectarnos a la central
     try:
-        #Conexión
+        # --- Conexión y registro en la Central ---
         cliente.connect((IP_CENTRAL, PUERTO_CENTRAL))
-        #Saludo
         cliente.send(common.protocol.ENQ)
         confirmacion = common.protocol.leer_trama(cliente)
-        #Bloque para comprobar que se establece la conexión
         if confirmacion != common.protocol.ACK:
             print("[ERROR DE PROTOCOLO] La central rechazó la conexión (no se recibió <ACK>)")
-            cliente.close()
-            return #Detención de la función
+            return
 
-        trama_registro = common.protocol.empaquetar(f"REGISTRO#{ID_ESTACION}#{UBICACION}")
-        cliente.send(trama_registro)
+        cliente.send(common.protocol.empaquetar(f"REGISTRO#{ID_ESTACION}#{UBICACION}"))
         respuesta = common.protocol.leer_trama(cliente)
-        #Comprobamos el ACK
         if respuesta == common.protocol.ACK:
-            #Leemos la trama
             trama_recibida = common.protocol.leer_trama(cliente)
             mensaje_recibido = common.protocol.desempaquetar(trama_recibida)
             print(f"MENSAJE DE LA CENTRAL:{mensaje_recibido}")
-            #Mandamos confirmación
             cliente.send(common.protocol.ACK)
-        
-        #Configuración del timeout
-        cliente.settimeout(1.0)
 
-        #Variable para guardar al engine
-        conexion_engine = None 
-        #Bucle de conexión persistente
+        cliente.settimeout(TICK)
+
+        conexion_engine = None
+        averia = False
+        bloqueada = False
+        estado_enviado = None
+        cola_ordenes = []   # tramas de la Central recibidas (y ya acusadas) mientras esperábamos un ACK
+        t_salud = t_respuesta = t_latido = 0.0
+
+        # --- Bucle de conexión persistente ---
         while True:
+            ahora = time.monotonic()
 
-            try:
-                #Comprobamos conexión
-                if conexion_engine is None:
+            # 1. Aceptar al Engine si no hay ninguno (también tras una caída)
+            if conexion_engine is None:
+                try:
                     conexion_engine, direccion = servidor.accept()
-                    print(f"[INFO] Engine conectado desde {direccion}")
-                    # Hacemos que esta nueva conexión tampoco bloquee el programa
                     conexion_engine.setblocking(False)
+                    t_respuesta = ahora
+                    print(f"[INFO] Engine conectado desde {direccion}")
+                    if bloqueada:
+                        reenviar_al_engine(conexion_engine, "BLOQUEAR")
+                except BlockingIOError:
+                    pass
 
+            # 2. Engine: leer lo que sube y vigilar su salud
+            para_central = None
+            if conexion_engine is not None:
+                try:
+                    mensaje_engine = leer_del_engine(conexion_engine)
+                    if mensaje_engine:
+                        t_respuesta = ahora
+                        partes = mensaje_engine.split('#')
+                        if partes[0] == "SALUD":
+                            averia = len(partes) < 3 or partes[2] != "OK"
+                        else:
+                            para_central = mensaje_engine  # AUTORIZA/DENIEGA/METRICAS/FIN_RIEGO
 
-            except BlockingIOError:
-                # Si entra aquí, es que el Engine no está intentando conectarse en este milisegundo.
-                # No pasa nada, seguimos nuestro camino.
-                pass
+                    if ahora - t_salud >= INTERVALO_SALUD:
+                        t_salud = ahora
+                        try:
+                            conexion_engine.send(common.protocol.empaquetar(f"COMPROBAR_SALUD#{ID_ESTACION}"))
+                        except BlockingIOError:
+                            pass
+                    if ahora - t_respuesta > TIMEOUT_SALUD:
+                        raise ConnectionError("El Engine no responde a las comprobaciones de salud")
+                except ConnectionError as e:
+                    print(f"[ENGINE CAÍDO] {e}")
+                    conexion_engine.close()
+                    conexion_engine = None
+                    averia = True
 
-            # ESCUCHAR LO QUE SUBE DEL ENGINE
-            try:
-                if conexion_engine is not None:
-                    trama_engine = common.protocol.leer_trama(conexion_engine)
-                    
-                    # Si el Engine nos ha enviado algo (como AUTORIZA_RIEGO o METRICAS)
-                    if trama_engine:
-                        mensaje_engine = common.protocol.desempaquetar(trama_engine)
-                        print(f"[PUENTE] Reenviando a Central: {mensaje_engine}")
-                        
-                        # 1. Le devolvemos el ACK local al Engine para liberarlo
-                        conexion_engine.send(common.protocol.ACK)
-                        
-                        # 2. Re-empaquetamos el mensaje y lo lanzamos hacia la red externa
-                        paquete_central = common.protocol.empaquetar(mensaje_engine)
-                        cliente.send(paquete_central)
-                        
-                        # 3. Esperamos que la Central confirme que lo ha recibido
-                        confirmacion = common.protocol.leer_trama(cliente)
-                        if confirmacion != common.protocol.ACK:
-                            print("[ERROR DE RED] La Central no confirmó el mensaje del Engine.")
-            except BlockingIOError:
-                # Si el Engine no está diciendo nada en este milisegundo, simplemente seguimos
-                pass  
+            # Reenvío a la Central, fuera del try anterior para no confundir sus errores con los del Engine
+            if para_central:
+                print(f"[PUENTE] Reenviando a Central: {para_central}")
+                enviar_a_central(cliente, para_central, cola_ordenes)
 
-            try:
-                #Comprobamos si debemos iniciar el riego
-                trama_recibida = common.protocol.leer_trama(cliente)
+            # 3. Estado hacia la Central
+            estado = "FUGA" if averia else "OK"
+            if estado == "OK" and estado_enviado == "FUGA":
+                # La Central solo saca la estación de FUGA con un REGISTRO nuevo
+                print("[RECUPERACIÓN] Avería resuelta: se vuelve a registrar la estación")
+                if enviar_a_central(cliente, f"REGISTRO#{ID_ESTACION}#{UBICACION}", cola_ordenes):
+                    estado_enviado = "OK"
+                    t_latido = ahora
+                    # el REGISTRO borra también PARADA: sincronizamos el Engine
+                    bloqueada = False
+                    reenviar_al_engine(conexion_engine, "ACTIVAR")
+            elif estado != estado_enviado or ahora - t_latido >= 1.0:
+                if estado != estado_enviado:
+                    print(f"[ESTADO] Engine {estado}")
+                enviar_a_central(cliente, f"ESTADO#{ID_ESTACION}#{estado}", cola_ordenes)
+                estado_enviado = estado
+                t_latido = ahora
 
+            # 4. Órdenes de la Central: primero las que quedaron en cola, después el socket
+            if cola_ordenes:
+                mensaje = cola_ordenes.pop(0)
+            else:
+                try:
+                    trama_recibida = common.protocol.leer_trama(cliente)
+                except socket.timeout:
+                    continue
                 if not trama_recibida:
                     print("[DESCONEXIÓN] La Central ha cerrado la conexión de forma inesperada.")
                     break
+                if trama_recibida in (common.protocol.ACK, common.protocol.NACK):
+                    continue  # rezagado de un cruce de tramas: se ignora
+                try:
+                    mensaje = common.protocol.desempaquetar(trama_recibida)
+                except (ValueError, IndexError) as e:
+                    print(f"[ERROR DE PROTOCOLO] Trama dañada de la Central: {e}")
+                    cliente.send(common.protocol.NACK)
+                    continue
+                cliente.send(common.protocol.ACK)  # acusamos antes de actuar: así la Central ya ha anotado su estado
 
-                mensaje = common.protocol.desempaquetar(trama_recibida)
-                
-                #separamos la información, que viene marcada entre #
-                argumentos = mensaje.split('#')
-                #Guardamos el comando que nos ha llegado
-                accion = argumentos[0]
+            accion = mensaje.split('#')[0]
+            if accion == "INICIAR_RIEGO":
+                print("[ORDEN RECIBIDA] Iniciando el riego por petición de la central")
+                if not reenviar_al_engine(conexion_engine, "INICIAR_RIEGO"):
+                    print("[AVISO] El Engine no está disponible: se deniega el riego")
+                    enviar_a_central(cliente, f"DENIEGA_RIEGO#{ID_ESTACION}#Engine no disponible", cola_ordenes)
+            elif accion == "FIN_RIEGO":
+                print("[ORDEN RECIBIDA] Finalizando el riego por petición de la central")
+                if not reenviar_al_engine(conexion_engine, "FIN_RIEGO"):
+                    print("[AVISO] El Engine no está disponible: el Monitor confirma el fin del riego")
+                    enviar_a_central(cliente, f"FIN_RIEGO#{ID_ESTACION}", cola_ordenes)
+            elif accion == "BLOQUEAR":
+                bloqueada = True
+                print("[ORDEN RECIBIDA] Estación FUERA DE SERVICIO por orden de la Central")
+                reenviar_al_engine(conexion_engine, "BLOQUEAR")
+            elif accion == "ACTIVAR":
+                bloqueada = False
+                print("[ORDEN RECIBIDA] Estación ACTIVADA por orden de la Central")
+                reenviar_al_engine(conexion_engine, "ACTIVAR")
+            else:
+                print(f"[CENTRAL] {mensaje}")  # tramas informativas de la Central
 
-                if accion == "INICIAR_RIEGO":
-                    print("[ORDEN RECIBIDA] Iniciando el riego por petición de la central")
-                    
-                    # Comprobamos que el Engine está conectado antes de enviarle nada
-                    if conexion_engine is not None:
-                        paquete = common.protocol.empaquetar("INICIAR_RIEGO")
-                        conexion_engine.send(paquete)
-                    else:
-                        print("[AVISO] La Central pide regar, pero el Engine no está conectado.")
-
-                if accion == "FIN_RIEGO": 
-                    print("[ORDEN RECIBIDA] Finalizando el riego por petición de la central")
-                    
-                    if conexion_engine is not None:
-                        paquete = common.protocol.empaquetar("FIN_RIEGO")
-                        conexion_engine.send(paquete)
-                    else:
-                        print("[AVISO] La Central pide parar, pero el Engine no está conectado.")
-                
-                # Liberamos a la Central
-                cliente.send(common.protocol.ACK)
-
-                
-            except socket.timeout:
-                # El timeout saltará cada segundo si la Central no manda órdenes
-                #Enviamos el estado
-                estado_engine = "OK"
-                trama_estado = common.protocol.empaquetar(f"ESTADO#{ID_ESTACION}#{estado_engine}")
-                #Nos aseguramos que recibimos la confirmación
-                cliente.send(trama_estado)
-                confirmacion = common.protocol.leer_trama(cliente)
-                #Esto nos permite depurar cortes de red
-                if confirmacion != common.protocol.ACK:
-                    print("[ERROR DE RED] El latido de salud no llegó correctamente (no se recibió <ACK>)")
-
-                pass
     except ConnectionRefusedError as e:
         print(f"[ERROR DE CONEXIÓN] La central no está disponible. Motivo:{e}")
+    except OSError as e:
+        print(f"[ERROR DE CONEXIÓN] Imposible conectar con WM_Central: {e}")
     finally:
         cliente.close()
-    
+        servidor.close()
+
+
 if __name__ == "__main__":
     WM_WS_M()
-                
-
-
