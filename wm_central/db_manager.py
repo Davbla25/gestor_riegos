@@ -12,7 +12,9 @@ def iniciar_bd():
     (id TEXT PRIMARY KEY ,
     ubicacion TEXT,
     operario_actual TEXT,
-    estado TEXT CHECK( estado IN ('DISPONIBLE', 'FUGA', 'PARADA', 'REGANDO', 'DESCONECTADA')))''' )
+    caudal TEXT,
+    volumen REAL,
+    estado TEXT CHECK( estado IN ('DISPONIBLE', 'SOLICITADA', 'FUGA', 'PARADA', 'REGANDO', 'DESCONECTADA')))''' )
     #El estado solo puede estar en determinados valores indicados en la documentación
 
     cursor.execute('''CREATE TABLE IF NOT EXISTS operarios
@@ -42,6 +44,37 @@ def registrar_estacion(id_estacion, ubicacion):
     cursor.close()
     conexion.commit()
     conexion.close()
+    
+def listar_estaciones():
+    # Consulta de solo lectura para el panel de control de la Central
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("SELECT id, ubicacion, estado, operario_actual, caudal, volumen FROM estaciones")
+    filas = cursor.fetchall()
+    cursor.close()
+    conexion.close()
+    return filas
+########################################################################
+# FUNCIONES DE MÉTRICAS
+#########################################################################
+def actualizar_metricas(id_estacion, caudal, volumen):
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("UPDATE estaciones SET  caudal = ?, volumen = ? WHERE id = ?", (caudal, volumen, id_estacion))
+    cursor.close()
+    conexion.commit()
+    conexion.close()
+
+def obtener_volumen(id_estacion):
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    cursor.execute("SELECT volumen FROM estaciones WHERE id = ?", (id_estacion,))
+    resultado = cursor.fetchone()
+    cursor.close()
+    conexion.close()
+    # Devolvemos el volumen si existe, o 0 por defecto
+    return resultado[0] if resultado and resultado[0] else 0
+
 
 #########################################################################
 # FUNCIONES DE OPERARIO
@@ -71,7 +104,7 @@ def asignar_operario(id_estacion, id_operario):
     #Guarda el operario en la BD cuando mandamos la petición de riego
     conexion = sqlite3.connect(ruta_bd)
     cursor = conexion.cursor()
-    cursor.execute("UPDATE estaciones SET operario_actual = ? WHERE id = ?", (id_operario, id_estacion))
+    cursor.execute("UPDATE estaciones SET operario_actual = ?, caudal = 0, volumen = 0, estado = 'SOLICITADA' WHERE id = ?", (id_operario, id_estacion))
     conexion.commit()
     conexion.close()
 
@@ -104,7 +137,7 @@ def obtener_estado(id_estacion):
 def bloquear_estacion(id_estacion):
     conexion = sqlite3.connect(ruta_bd)
     cursor = conexion.cursor()
-    cursor.execute("UPDATE estaciones SET  estado = 'PARADA' WHERE id = ?", (id_estacion,))
+    cursor.execute("UPDATE estaciones SET  estado = 'PARADA', operario_actual = NULL WHERE id = ?", (id_estacion,))
     cursor.close()
     conexion.commit()
     conexion.close()
@@ -120,7 +153,7 @@ def cambiar_estado_riego(id_estacion):
 def cambiar_estado_desconectada(id_estacion):
     conexion = sqlite3.connect(ruta_bd)
     cursor = conexion.cursor()
-    cursor.execute("UPDATE estaciones SET  estado = 'DESCONECTADA' WHERE id = ?", (id_estacion,))
+    cursor.execute("UPDATE estaciones SET  estado = 'DESCONECTADA', operario_actual = NULL, caudal = 0, volumen = 0 WHERE id = ?", (id_estacion,))
     cursor.close()
     conexion.commit()
     conexion.close()
@@ -128,7 +161,7 @@ def cambiar_estado_desconectada(id_estacion):
 def cambiar_estado_disponible(id_estacion):
     conexion = sqlite3.connect(ruta_bd)
     cursor = conexion.cursor()
-    cursor.execute("UPDATE estaciones SET  estado = 'DISPONIBLE' WHERE id = ?", (id_estacion,))
+    cursor.execute("UPDATE estaciones SET  estado = 'DISPONIBLE', caudal = 0, volumen = 0, operario_actual = NULL WHERE id = ?", (id_estacion,))
     cursor.close()
     conexion.commit()
     conexion.close()
@@ -136,7 +169,7 @@ def cambiar_estado_disponible(id_estacion):
 def cambiar_estado_fuga(id_estacion):
     conexion = sqlite3.connect(ruta_bd)
     cursor = conexion.cursor()
-    cursor.execute("UPDATE estaciones SET  estado = 'FUGA' WHERE id = ?", (id_estacion,))
+    cursor.execute("UPDATE estaciones SET  estado = 'FUGA', operario_actual = NULL WHERE id = ?", (id_estacion,))
     cursor.close()
     conexion.commit()
     conexion.close()
