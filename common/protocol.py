@@ -33,7 +33,7 @@ def desempaquetar(trama_bytes): #recibe una trama y la decodifica, comprobando l
         if len(trama_bytes) < 4: #Compruebo que la trama tiene al menos las 4 componentes básicas de mensaje, si no error
              raise IndexError("La trama es demasiado pequeña")
         if not (trama_bytes[0:1] == STX and trama_bytes[-2:-1] == ETX): #comprobamos que la trama cumpla el formato deseado
-             raise ValueError("La tama no tiene el formato estandar <STX><DATA><ETX><LRC>")
+             raise ValueError("La trama no tiene el formato estandar <STX><DATA><ETX><LRC>")
         lrc = calcular_lrc(trama_bytes[1:-2])
         if not lrc == trama_bytes[-1:]:
              raise ValueError("Mensaje dañado, el LRC no coincide")
