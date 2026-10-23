@@ -34,22 +34,22 @@ class EstacionInalcanzable(ConnectionError):
 #########################################################################
 def iniciar_kafka(ip_kafka):
     print(f"[KAFKA] Iniciando escucha en el broker {ip_kafka}...")
-
-    #Nos ponemos en el canal de peticiones_operarios (los bytes los traducimos nosotros dentro del try)
-    consumidor = KafkaConsumer('peticiones_operarios', bootstrap_servers=[ip_kafka])
-    try:
-        #bucle donde estamos escuchando las peticiones
-        for mensaje in consumidor:
-            #el try va DENTRO del bucle: un mensaje defectuoso no debe parar la escucha de los siguientes
-            try:
-                texto_recibido = mensaje.value.decode('utf-8')
-                print(f"[KAFKA] Petición recibida: {texto_recibido}")
-                tratar_mensaje_operario(texto_recibido)
-            except Exception as e:
-                print(f"[ERROR KAFKA] No se pudo tratar el mensaje {mensaje.value!r}: {e}")
-    except Exception as e:
-        print(f"[ERROR KAFKA] El consumidor de Kafka se ha detenido: {e}")
-
+    while True:
+        #Nos ponemos en el canal de peticiones_operarios (los bytes los traducimos nosotros dentro del try)
+        consumidor = KafkaConsumer('peticiones_operarios', bootstrap_servers=[ip_kafka])
+        try:
+            #bucle donde estamos escuchando las peticiones
+            for mensaje in consumidor:
+                #el try va DENTRO del bucle: un mensaje defectuoso no debe parar la escucha de los siguientes
+                try:
+                    texto_recibido = mensaje.value.decode('utf-8')
+                    print(f"[KAFKA] Petición recibida: {texto_recibido}")
+                    tratar_mensaje_operario(texto_recibido)
+                except Exception as e:
+                    print(f"[ERROR KAFKA] No se pudo tratar el mensaje {mensaje.value!r}: {e}")
+        except Exception as e:
+            print(f"[ERROR KAFKA] El consumidor de Kafka se ha detenido: {e}, reconcectamos en 2s")
+            time.sleep(2)
 
 #########################################################################
 # Bucle principal de red
@@ -439,7 +439,6 @@ def notificar_operario(mensaje):
     #enviamos el mensaje por el canal de respuestas
     try:
         productor_respuestas.send('respuesta_central', mensaje)
-        productor_respuestas.flush(timeout=2)
     except Exception as e:
         print(f'[ERROR] No se pudo enviar al operario el mensaje: {mensaje}. Error: {e}')
 
