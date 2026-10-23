@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+
+# Directorio raíz dentro del contenedor
+WORKDIR /app
+
+# Copiamos solo los requirements primero
+COPY wm_central/requirements.txt ./wm_central/
+RUN pip install --no-cache-dir -r wm_central/requirements.txt
+
+# Copiamos las carpetas necesarias
+COPY common/ ./common/
+COPY wm_central/ ./wm_central/
+
+# Nos movemos a la carpeta de la central para ejecutar el código
+WORKDIR /app/wm_central
+
+# Le decimos a Python que busque módulos (como common) desde /app
+ENV PYTHONPATH=/app
+
+EXPOSE 8080
+ENTRYPOINT ["python", "-u", "WM_Central.py"]
