@@ -3,16 +3,65 @@ import threading
 import time
 import common.protocol
 import os
+import argparse
 
-IP_LOCAL = os.environ.get("MONITOR_IP", "127.0.0.1")
-PUERTO_LOCAL = int(os.environ.get("MONITOR_PORT", 5001))
-ID_ESTACION = os.environ.get("STATION_ID", "WS_DEFAULT")
-UBICACION = os.environ.get("STATION_LOCATION", "Zona Centro")
-CAUDAL = float(os.environ.get("CAUDAL_LMIN", 5.0))  # caudal simulado en L/min
 TICK = 0.2  # timeout del socket; los envíos periódicos se miden con el reloj
 
 ko = False  # avería simulada: se alterna desde el teclado
 
+#######################################################
+# Lectura de los argumentos
+#######################################################
+def leer_argumentos():
+    p = argparse.ArgumentParser(
+        prog="WM_WS_E",
+        description="Engine de una Watering Station: controla la válvula y el caudalímetro simulados.")
+    p.add_argument("--id", default=os.environ.get("STATION_ID"), type=campo,
+                   help="ID de la WS (o STATION_ID). Debe coincidir con el del Monitor.")
+    p.add_argument("--monitor",
+                   default=f"{os.environ.get('MONITOR_IP', '127.0.0.1')}:{os.environ.get('MONITOR_PORT', '5001')}",
+                   type=host_puerto,
+                   help="host:puerto del Monitor (o MONITOR_IP y MONITOR_PORT).")
+    p.add_argument("--broker", default=os.environ.get("KAFKA_SERVER"), type=host_puerto,
+                   help="host:puerto del broker Kafka (o KAFKA_SERVER). Se acepta por la especificación; esta versión no lo usa.")
+    p.add_argument("--caudal", default=os.environ.get("CAUDAL_LMIN", "5.0"), type=numero_positivo,
+                   help="Caudal simulado en L/min (o CAUDAL_LMIN).")
+    args = p.parse_args()
+    if not args.id:
+        p.error("falta el ID de la estación: usa --id o la variable STATION_ID")
+    return args
+
+#########################################################
+# VALIDADORES argparse
+#########################################################
+
+def host_puerto(texto):
+    host, sep, puerto = texto.rpartition(":")
+    if not sep or not host:
+        raise argparse.ArgumentTypeError(f"'{texto}' no tiene el formato host:puerto")
+    return host, puerto_valido(puerto)
+
+
+def campo(texto):
+    """ID, ubicación o nombre: no vacío y sin '#', que es el separador del protocolo."""
+    texto = texto.strip()
+    if not texto or "#" in texto:
+        raise argparse.ArgumentTypeError("no puede estar vacío ni contener '#'")
+    return texto
+
+
+def numero_positivo(texto):
+    try:
+        valor = float(texto)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{texto}' no es un número")
+    if valor <= 0:
+        raise argparse.ArgumentTypeError("debe ser mayor que 0")
+    return valor
+
+#########################################################
+# FUNCIONES auxiliares
+#########################################################
 
 def enviar(conexion, mensaje):
     conexion.send(common.protocol.empaquetar(mensaje))
@@ -26,8 +75,16 @@ def escuchar_teclado():
         ko = not ko
         print(f"[ENGINE] Estado simulado: {'KO (fuga)' if ko else 'OK'}")
 
-
-def WM_WS_E():
+#########################################################
+# Bucle principal
+#########################################################
+def WM_WS_E(args):
+    IP_LOCAL, PUERTO_LOCAL = args.monitor
+    ID_ESTACION = args.id
+    CAUDAL = args.caudal
+    if args.broker:
+        print("[ENGINE] Broker recibido, pero esta versión del Engine no usa Kafka")
+    #Conexión
     cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         cliente.connect((IP_LOCAL, PUERTO_LOCAL))
@@ -107,4 +164,4 @@ def WM_WS_E():
 
 
 if __name__ == "__main__":
-    WM_WS_E()
+    WM_WS_E(leer_argumentos())

@@ -2,10 +2,11 @@ import os
 import sys
 import threading
 import time
+import argparse
 from kafka import KafkaProducer, KafkaConsumer
 from kafka.errors import KafkaError, NoBrokersAvailable
 
-# ---------------------------------------------------------
+
 # PARÁMETROS: línea de comandos (prioritaria) o variables de entorno
 #   python WM_FO.py <broker host:puerto> <ID_OPERARIO> [fichero_servicios]
 # ---------------------------------------------------------
@@ -30,6 +31,33 @@ evento_inicio = threading.Event()     # el riego ha arrancado
 evento_fin = threading.Event()        # el servicio ha concluido (éxito o fracaso)
 salir = threading.Event()
 
+#########################################################
+# VALIDADORES argparse
+#########################################################
+
+def host_puerto(texto):
+    host, sep, puerto = texto.rpartition(":")
+    if not sep or not host:
+        raise argparse.ArgumentTypeError(f"'{texto}' no tiene el formato host:puerto")
+    return host, puerto_valido(puerto)
+
+
+def campo(texto):
+    """ID, ubicación o nombre: no vacío y sin '#', que es el separador del protocolo."""
+    texto = texto.strip()
+    if not texto or "#" in texto:
+        raise argparse.ArgumentTypeError("no puede estar vacío ni contener '#'")
+    return texto
+
+
+def numero_positivo(texto):
+    try:
+        valor = float(texto)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{texto}' no es un número")
+    if valor <= 0:
+        raise argparse.ArgumentTypeError("debe ser mayor que 0")
+    return valor
 
 #########################################################################
 # Recepción
