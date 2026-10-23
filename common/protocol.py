@@ -35,16 +35,16 @@ def desempaquetar(trama_bytes): #recibe una trama y la decodifica, comprobando l
         if not (trama_bytes[0:1] == STX and trama_bytes[-2:-1] == ETX): #comprobamos que la trama cumpla el formato deseado
              raise ValueError("La trama no tiene el formato estandar <STX><DATA><ETX><LRC>")
         lrc = calcular_lrc(trama_bytes[1:-2])
-        if not lrc == trama_bytes[-1:]:
+        if not lrc == trama_bytes[-1:]: #si el LRC no coincide se ha corrompido el mensaje por el camino
              raise ValueError("Mensaje dañado, el LRC no coincide")
-        return trama_bytes[1:-2].decode('utf-8')
+        return trama_bytes[1:-2].decode('utf-8') #devolvemos un string con el mensajes
 
 #Funcion que se usa para asegurarnos de que se leen correctamente las tramas una a una y no se solapan o fragmentan
 def leer_trama(conexion):
     #leemos el primer byte
     byte = conexion.recv(1)
     #si el byte es un byte de mensaje unico lo devolvemos
-    if byte == ENQ or byte == ACK or byte == NACK:
+    if byte == ENQ or byte == ACK or byte == NACK or byte == EOT:
         return byte
     #si empieza una cadena, entramos en un bucle para recivir solo esa cadena entera
     elif byte == STX:
