@@ -161,11 +161,11 @@ Estructura: `<TIPO>#<DESTINATARIO>#<TEXTO>`. Cada FO debe filtrar los mensajes c
 
 | Tipo | Formato | Propósito |
 | :--- | :--- | :--- |
-| **INFO** | `INFO#<ID_OP>#<Texto>` | Seguimiento del servicio: petición enviada, riego iniciado, métricas, alta de operario... |
-| **ERROR** | `ERROR#<ID_OP>#<Texto>` | Fallo o denegación: operario no dado de alta, estación offline o no disponible, riego denegado, conexión perdida... |
-| **ALERTA** | `ALERTA#ALL#<Texto>` | Aviso global urgente (fuga). Todos los FO deben procesarlo. |
-| **METRICAS** **[PROPUESTO]** | `METRICAS#<ID_OP>#<ID_WS>#<Caudal>#<Volumen>` | Datos estructurados para que el FO no tenga que interpretar texto. |
-| **RESUMEN** **[PROPUESTO]** | `RESUMEN#<ID_OP>#<ID_WS>#<Volumen>#<Duración>` | Resumen final del riego. La duración la calcula CENTRAL desde que recibe `AUTORIZA_RIEGO` hasta el `FIN_RIEGO`. |
+| **INFO** | `INFO#<ID_OPERARIO>#<Texto>` | Confirmaciones e información de seguimiento exclusiva para ese operario (ej. "Riego iniciado con éxito"). |
+| **ERROR** | `ERROR#<ID_OPERARIO>#<Texto>` | Avisos de fallos o denegaciones para ese operario (ej. "Estación no disponible actualmente"). |
+| **ALERTA**| `ALERTA#ALL#<Texto>` | Aviso global urgente que todos los operarios de la red deben ver obligatoriamente (ej. "¡FUGA detectada en WS-01!"). |
+
+
 
 ### 5.3 Qué mensajes cierran un servicio
 
@@ -191,3 +191,24 @@ El resto de `INFO` son de progreso y no cierran el servicio.
 3. **Nuevos tipos hacia el FO** (`METRICAS`, `RESUMEN`, aviso de fuga al operario afectado) y aceptación del destinatario `ALL` por parte del FO.
 4. **Riego iniciado desde la estación y rechazo de CENTRAL:** la estación debe saber qué hacer si CENTRAL responde que no estaba disponible (sección 3.6).
 5. **Visualización del estado de todas las estaciones por parte de los operarios:** fuera de alcance por ahora.
+
+
+## Especificación de Conexión Local: Monitor <-> Engine
+
+La comunicación interna de la estación de riego se realiza de forma directa y asíncrona mediante Sockets, donde el Monitor actúa como un "Router" o pasarela entre la red física local y la Central remota.
+
+| Parámetro / Característica | Especificación Técnica | Descripción del Comportamiento |
+| :--- | :--- | :--- |
+| **Protocolo de Transporte** | TCP / IPv4 (`SOCK_STREAM`) | Conexión persistente que garantiza la entrega íntegra y secuencial de los comandos a nivel local. |
+| **Rol del Monitor (`WM_WS_M`)** | Servidor Local | Abre el puerto, hace `bind()` y escucha (`listen`) de forma **no bloqueante** para no detener la comunicación con la Central. Acepta 1 sola conexión. |
+| **Rol del Engine (`WM_WS_E`)** | Cliente Local | Al arrancar, inicia la conexión hacia el Monitor (`connect()`). Si se cae, debe intentar reconectarse. |
+| **Variables de Entorno** | `MONITOR_IP` (Def: `127.0.0.1`)<br>`MONITOR_PORT` (Def: `5001`) | Configuración del enchufe local. Es vital que el puerto sea diferente al de la Central (`5000`). |
+| **Formato de Mensajes** | Tramas con `LRC` (`common.protocol`) | Aunque es comunicación local, se reutiliza el empaquetado oficial (`<STX>` + Comando + `<ETX>` + `<LRC>`) para estandarizar el código. |
+| **Flujo de Bajada (M &rarr; E)** | Órdenes de Acción | El Monitor recibe de la red y reenvía al Engine comandos limpios como `INICIAR_RIEGO` o `FIN_RIEGO`. |
+| **Flujo de Subida (E &rarr; M)** | Telemetría y Control | El Engine lee los sensores físicos y envía al Monitor comandos de respuesta como `METRICAS`, `AUTORIZA_RIEGO` o `DENIEGA_RIEGO`. |
+=======
+| **INFO** | `INFO#<ID_OP>#<Texto>` | Seguimiento del servicio: petición enviada, riego iniciado, métricas, alta de operario... |
+| **ERROR** | `ERROR#<ID_OP>#<Texto>` | Fallo o denegación: operario no dado de alta, estación offline o no disponible, riego denegado, conexión perdida... |
+| **ALERTA** | `ALERTA#ALL#<Texto>` | Aviso global urgente (fuga). Todos los FO deben procesarlo. |
+| **METRICAS** **[PROPUESTO]** | `METRICAS#<ID_OP>#<ID_WS>#<Caudal>#<Volumen>` | Datos estructurados para que el FO no tenga que interpretar texto. |
+| **RESUMEN** **[PROPUESTO]** | `RESUMEN#<ID_OP>#<ID_WS>#<Volumen>#<Duración>` | Resumen final del riego. La duración la calcula CENTRAL desde que recibe `AUTORIZA_RIEGO` hasta el `FIN_RIEGO`. |
