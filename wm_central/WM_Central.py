@@ -255,8 +255,18 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
                 print(f"[ESTADO] la estación {argumentos[1]} se encuentra en el estado: {argumentos[2]}")
 
         case "REGISTRO":
-            db_manager.registrar_estacion(argumentos[1], argumentos[2])
-            print(f"[REGISTRO]: anotada la estación {argumentos[1]} en {argumentos[2]}")
+            id_estacion = argumentos[1]
+            ubicacion = argumentos[2]
+
+            if id_estacion in coleccion_buzones:
+                print(f"[ALERTA] Intento de registro duplicado. La estación {id_estacion} ya está conectada.")
+                # Avisamos a la estación intrusa
+                comprobar_ack(conexion, "ERROR#ID de estación ya en uso", lista_pendientes)
+                # Levantamos un error de red para forzar a manejar_hilo a cerrar este socket intruso
+                raise ConnectionAbortedError(f"Intento de duplicar la estación {id_estacion}")
+            
+            db_manager.registrar_estacion(id_estacion, ubicacion)
+            print(f"[REGISTRO]: anotada la estación {id_estacion} en {ubicacion}")
             #Nos guardamos la cola en un diccionario para después poder acceder a ella desde Kafka y el menú
             coleccion_buzones[argumentos[1]] = buzon_salida
             comprobar_ack(conexion, "Estación correctamente dada de alta en el sistema", lista_pendientes)
