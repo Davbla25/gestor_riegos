@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Dependencias primero, para aprovechar la caché de capas
+COPY wm_fo/requirements.txt ./wm_fo/
+RUN pip install --no-cache-dir -r wm_fo/requirements.txt
+
+COPY common/ ./common/
+COPY wm_fo/ ./wm_fo/
+
+WORKDIR /app/wm_fo
+
+# Para que "import common.protocol" funcione desde /app
+ENV PYTHONPATH=/app
+
+ENTRYPOINT ["python", "-u", "WM_FO.py"]
