@@ -571,7 +571,7 @@ def menu_central():
         print("5. Activar estación (Volver a disponible)")
         print("========================================")
 
-        opcion = input("Selecciona una opción: ").strip()
+        opcion = input("Selecciona una opción:\n").strip()
 
         match opcion:
             case "1":
