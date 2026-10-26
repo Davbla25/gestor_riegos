@@ -1,22 +1,18 @@
 import os
-import sys
 import threading
 import time
+import argparse
 from kafka import KafkaProducer, KafkaConsumer
-from kafka.errors import KafkaError, NoBrokersAvailable
+from kafka.errors import KafkaError
 
-# ---------------------------------------------------------
+
 # PARÁMETROS: línea de comandos (prioritaria) o variables de entorno
 #   python WM_FO.py <broker host:puerto> <ID_OPERARIO> [fichero_servicios]
 # ---------------------------------------------------------
-KAFKA_SERVER = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("KAFKA_SERVER", "localhost:9092")
-ID_OPERARIO = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("FO_ID", "FO_DEFAULT")
-FICHERO = sys.argv[3] if len(sys.argv) > 3 else os.environ.get("FO_FICHERO")  # si existe, se ejecuta al arrancar
-NOMBRE = os.environ.get("FO_NAME", ID_OPERARIO)
-DURACION_RIEGO = float(os.environ.get("FO_DURACION_RIEGO", 10))    # s de riego en modo fichero
-PLAZO_RESPUESTA = float(os.environ.get("FO_PLAZO_RESPUESTA", 10))  # s sin respuesta => Central inalcanzable
-ESPERA_ENTRE_SERVICIOS = 4                                         # s, según la especificación
-
+# Se rellenan en configurar(), a partir de los argumentos
+KAFKA_SERVER = ID_OPERARIO = FICHERO = NOMBRE = None
+DURACION_RIEGO = PLAZO_RESPUESTA = 0.0
+ESPERA_ENTRE_SERVICIOS = 4  # s, según la especificación                                      
 TOPIC_PETICIONES = "peticiones_operarios"
 TOPIC_RESPUESTAS = "respuesta_central"
 
@@ -30,6 +26,74 @@ evento_inicio = threading.Event()     # el riego ha arrancado
 evento_fin = threading.Event()        # el servicio ha concluido (éxito o fracaso)
 salir = threading.Event()
 
+def leer_argumentos():
+    p = argparse.ArgumentParser(
+        prog="WM_FO",
+        description="Aplicación del operario de campo: solicita y supervisa riegos a través de WM_Central.")
+    p.add_argument("--broker", default=os.environ.get("KAFKA_SERVER", "localhost:9092"), type=host_puerto,
+                   help="host:puerto del broker Kafka (o KAFKA_SERVER).")
+    p.add_argument("--id", default=os.environ.get("FO_ID"), type=campo,
+                   help="ID único del operario (o FO_ID). Obligatorio.")
+    p.add_argument("--nombre", default=os.environ.get("FO_NAME"), type=campo,
+                   help="Nombre del operario (o FO_NAME). Por defecto, su ID.")
+    p.add_argument("--fichero", default=os.environ.get("FO_FICHERO"),
+                   help="Fichero de servicios a ejecutar al arrancar (o FO_FICHERO).")
+    p.add_argument("--duracion-riego", default=os.environ.get("FO_DURACION_RIEGO", "10"), type=numero_positivo,
+                   help="Segundos de riego en modo fichero antes de pedir la parada.")
+    p.add_argument("--plazo-respuesta", default=os.environ.get("FO_PLAZO_RESPUESTA", "10"), type=numero_positivo,
+                   help="Segundos sin respuesta tras los que se da por caída a la Central.")
+    args = p.parse_args()
+    if not args.id:
+        p.error("falta el ID del operario: usa --id o la variable FO_ID")
+    return args
+
+
+def configurar(args):
+    global KAFKA_SERVER, ID_OPERARIO, FICHERO, NOMBRE, DURACION_RIEGO, PLAZO_RESPUESTA
+    host, puerto = args.broker
+    KAFKA_SERVER = f"{host}:{puerto}"
+    ID_OPERARIO = args.id
+    NOMBRE = args.nombre or args.id
+    FICHERO = args.fichero
+    DURACION_RIEGO = args.duracion_riego
+    PLAZO_RESPUESTA = args.plazo_respuesta
+
+#########################################################
+# VALIDADORES argparse
+#########################################################
+
+def puerto_valido(texto):
+    try:
+        valor = int(texto)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{texto}' no es un puerto")
+    if not 1 <= valor <= 65535:
+        raise argparse.ArgumentTypeError(f"puerto fuera de rango (1-65535): {valor}")
+    return valor
+
+def host_puerto(texto):
+    host, sep, puerto = texto.rpartition(":")
+    if not sep or not host:
+        raise argparse.ArgumentTypeError(f"'{texto}' no tiene el formato host:puerto")
+    return host, puerto_valido(puerto)
+
+
+def campo(texto):
+    """ID, ubicación o nombre: no vacío y sin '#', que es el separador del protocolo."""
+    texto = texto.strip()
+    if not texto or "#" in texto:
+        raise argparse.ArgumentTypeError("no puede estar vacío ni contener '#'")
+    return texto
+
+
+def numero_positivo(texto):
+    try:
+        valor = float(texto)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{texto}' no es un número")
+    if valor <= 0:
+        raise argparse.ArgumentTypeError("debe ser mayor que 0")
+    return valor
 
 #########################################################################
 # Recepción
@@ -71,6 +135,7 @@ def sondear(timeout_ms):
         lote = consumidor.poll(timeout_ms=timeout_ms)
         for registros in lote.values():
             for r in registros:
+                r.decode('utf-8', errors='replace')
                 procesar(r.value)
     except Exception as e:
         print(f"\n[ERROR] Imposible leer de Kafka: {e}")
@@ -101,7 +166,9 @@ def esperar_asignacion(plazo=20):
 
 def enviar(mensaje):
     try:
-        productor.send(TOPIC_PETICIONES, key=ID_OPERARIO, value=mensaje).get(timeout=5)
+        mensaje.encode('utf-8')
+        id_operario = ID_OPERARIO.encode('utf-8')
+        productor.send(TOPIC_PETICIONES, key=id_operario, value=mensaje).get(timeout=5)
         return True
     except KafkaError as e:
         print(f"[ERROR] Imposible conectar con Kafka: {e}")
@@ -229,6 +296,7 @@ def menu():
 
 def main():
     global productor, consumidor
+    configurar(leer_argumentos())
     print("--- INICIANDO APLICACIÓN DE OPERARIO ---")
     print(f"ID: {ID_OPERARIO} | Nombre: {NOMBRE} | Servidor Kafka: {KAFKA_SERVER}")
     print("-" * 40)
@@ -236,8 +304,6 @@ def main():
     try:
         productor = KafkaProducer(
             bootstrap_servers=[KAFKA_SERVER],
-            key_serializer=lambda k: k.encode('utf-8'),   # misma clave => orden garantizado por operario
-            value_serializer=lambda v: v.encode('utf-8'),
             max_block_ms=5000,
             retries=3,
         )
@@ -247,9 +313,8 @@ def main():
             bootstrap_servers=[KAFKA_SERVER],
             group_id=f"fo-{ID_OPERARIO}",
             auto_offset_reset='latest',
-            value_deserializer=lambda x: x.decode('utf-8', errors='replace'),
         )
-    except NoBrokersAvailable:
+    except KafkaError:
         print(f"[ERROR] Imposible conectar con el broker Kafka en {KAFKA_SERVER}")
         return
 

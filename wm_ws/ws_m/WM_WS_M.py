@@ -2,20 +2,65 @@ import socket
 import time
 import common.protocol
 import os
-
-IP_CENTRAL = os.environ.get("CENTRAL_IP", "127.0.0.1")
-PUERTO_CENTRAL = int(os.environ.get("CENTRAL_PORT", 5000))
-ID_ESTACION = os.environ.get("STATION_ID", "WS_DEFAULT")
-UBICACION = os.environ.get("STATION_LOCATION", "Zona Centro")
-
-IP_LOCAL = os.environ.get("MONITOR_IP", "127.0.0.1")
-PUERTO_LOCAL = int(os.environ.get("MONITOR_PORT", 5001))
+import argparse
 
 INTERVALO_SALUD = 1.0   # s entre comprobaciones de salud al Engine
 TIMEOUT_SALUD = 3.0     # s sin respuesta del Engine => se considera caído
 PLAZO_ACK = 1.5         # s que esperamos el ACK de la Central en cada intento
-TICK = 0.2              # timeout del socket de la Central (ritmo del bucle)
+TICK = 5.0              # timeout del socket de la Central (ritmo del bucle)
 
+#######################################################
+# Lectura de los argumentos
+#######################################################
+
+def leer_argumentos():
+    p = argparse.ArgumentParser(
+        prog="WM_WS_M",
+        description="Monitor de una Watering Station: se registra en WM_Central y supervisa al Engine.")
+    p.add_argument("--id", default=os.environ.get("STATION_ID"), type=campo,
+                   help="ID único de la WS (o variable STATION_ID). Obligatorio.")
+    p.add_argument("--ubicacion", default=os.environ.get("STATION_LOCATION", "Zona Centro"), type=campo,
+                   help="Ubicación de la WS (o STATION_LOCATION).")
+    p.add_argument("--central",
+                   default=f"{os.environ.get('CENTRAL_IP', '127.0.0.1')}:{os.environ.get('CENTRAL_PORT', '5000')}",
+                   type=host_puerto,
+                   help="host:puerto de WM_Central (o CENTRAL_IP y CENTRAL_PORT).")
+    p.add_argument("--puerto-local", default=os.environ.get("MONITOR_PORT", "5001"), type=puerto_valido,
+                   help="Puerto donde escucha al Engine (o MONITOR_PORT).")
+    p.add_argument("--ip-local", default=os.environ.get("MONITOR_IP", "127.0.0.1"),
+                   help="IP donde escucha al Engine (o MONITOR_IP). Usa 0.0.0.0 en contenedores separados.")
+    args = p.parse_args()
+    if not args.id:
+        p.error("falta el ID de la estación: usa --id o la variable STATION_ID")
+    return args
+
+#########################################################
+# VALIDADORES argparse
+#########################################################
+
+def puerto_valido(texto):
+    try:
+        valor = int(texto)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{texto}' no es un puerto")
+    if not 1 <= valor <= 65535:
+        raise argparse.ArgumentTypeError(f"puerto fuera de rango (1-65535): {valor}")
+    return valor
+
+
+def host_puerto(texto):
+    host, sep, puerto = texto.rpartition(":")
+    if not sep or not host:
+        raise argparse.ArgumentTypeError(f"'{texto}' no tiene el formato host:puerto")
+    return host, puerto_valido(puerto)
+
+
+def campo(texto):
+    """ID, ubicación o nombre: no vacío y sin '#', que es el separador del protocolo."""
+    texto = texto.strip()
+    if not texto or "#" in texto:
+        raise argparse.ArgumentTypeError("no puede estar vacío ni contener '#'")
+    return texto
 
 #########################################################################
 # Funciones auxiliares
@@ -93,7 +138,11 @@ def reenviar_al_engine(conexion, mensaje):
 # Bucle principal
 #########################################################################
 
-def WM_WS_M():
+def WM_WS_M(args):
+
+    IP_CENTRAL, PUERTO_CENTRAL = args.central
+    IP_LOCAL, PUERTO_LOCAL = args.ip_local, args.puerto_local
+    ID_ESTACION, UBICACION = args.id, args.ubicacion
     ##########################################
     # PARTE QUE ACTÚA COMO CLIENTE (C <= M)  #
     ##########################################
@@ -254,4 +303,4 @@ def WM_WS_M():
 
 
 if __name__ == "__main__":
-    WM_WS_M()
+    WM_WS_M(leer_argumentos())
