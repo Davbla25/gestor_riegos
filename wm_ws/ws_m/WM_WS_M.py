@@ -7,7 +7,7 @@ import argparse
 INTERVALO_SALUD = 1.0   # s entre comprobaciones de salud al Engine
 TIMEOUT_SALUD = 3.0     # s sin respuesta del Engine => se considera caído
 PLAZO_ACK = 1.5         # s que esperamos el ACK de la Central en cada intento
-TICK = 0.2              # timeout del socket de la Central (ritmo del bucle)
+TICK = 5.0              # timeout del socket de la Central (ritmo del bucle)
 
 #######################################################
 # Lectura de los argumentos

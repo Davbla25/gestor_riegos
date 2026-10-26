@@ -35,6 +35,15 @@ def leer_argumentos():
 # VALIDADORES argparse
 #########################################################
 
+def puerto_valido(texto):
+    try:
+        valor = int(texto)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"'{texto}' no es un puerto")
+    if not 1 <= valor <= 65535:
+        raise argparse.ArgumentTypeError(f"puerto fuera de rango (1-65535): {valor}")
+    return valor
+    
 def host_puerto(texto):
     host, sep, puerto = texto.rpartition(":")
     if not sep or not host:
