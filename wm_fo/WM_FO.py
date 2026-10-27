@@ -135,8 +135,8 @@ def sondear(timeout_ms):
         lote = consumidor.poll(timeout_ms=timeout_ms)
         for registros in lote.values():
             for r in registros:
-                r.decode('utf-8', errors='replace')
-                procesar(r.value)
+                v_deco = r.value.decode('utf-8', errors='replace')
+                procesar(v_deco)
     except Exception as e:
         print(f"\n[ERROR] Imposible leer de Kafka: {e}")
         time.sleep(1)
@@ -166,9 +166,9 @@ def esperar_asignacion(plazo=20):
 
 def enviar(mensaje):
     try:
-        mensaje.encode('utf-8')
+        mensaje_nuevo = mensaje.encode('utf-8')
         id_operario = ID_OPERARIO.encode('utf-8')
-        productor.send(TOPIC_PETICIONES, key=id_operario, value=mensaje).get(timeout=5)
+        productor.send(TOPIC_PETICIONES, key=id_operario, value=mensaje_nuevo).get(timeout=5)
         return True
     except KafkaError as e:
         print(f"[ERROR] Imposible conectar con Kafka: {e}")
@@ -311,7 +311,8 @@ def main():
         consumidor = KafkaConsumer(
             TOPIC_RESPUESTAS,
             bootstrap_servers=[KAFKA_SERVER],
-            group_id=f"fo-{ID_OPERARIO}",
+            # Añadir int(time.time()) para crear un grupo nuevo en cada arranque
+            group_id=f"fo-{ID_OPERARIO}-{int(time.time())}", 
             auto_offset_reset='latest',
         )
     except KafkaError:
@@ -342,6 +343,7 @@ def main():
             consumidor.close()
         except Exception:
             pass
+        os._exit(0) # <-- Añadir esto para matar el proceso y destrabar el input()
 
 
 if __name__ == "__main__":
