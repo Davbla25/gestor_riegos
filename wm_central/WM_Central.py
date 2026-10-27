@@ -15,7 +15,7 @@ AZUL = "\033[94m"
 RESET = "\033[0m"
 
 #Tiempo máximo (en segundos) que esperamos el ACK en cada intento de envío
-PLAZO_ACK = 1.5
+PLAZO_ACK = 5
 
 #Diccionario donde iremos apuntando los buzones de las estaciones conectadas para usar en Kafka y en el menú
 coleccion_buzones = {}
