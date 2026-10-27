@@ -35,9 +35,10 @@ class EstacionInalcanzable(ConnectionError):
 def iniciar_kafka(ip_kafka):
     print(f"[KAFKA] Iniciando escucha en el broker {ip_kafka}...")
     while True:
+        consumidor = None
         #Nos ponemos en el canal de peticiones_operarios (los bytes los traducimos nosotros dentro del try)
-        consumidor = KafkaConsumer('peticiones_operarios', bootstrap_servers=[ip_kafka])
         try:
+            consumidor = KafkaConsumer('peticiones_operarios', bootstrap_servers=[ip_kafka])
             #bucle donde estamos escuchando las peticiones
             for mensaje in consumidor:
                 #el try va DENTRO del bucle: un mensaje defectuoso no debe parar la escucha de los siguientes
@@ -48,8 +49,16 @@ def iniciar_kafka(ip_kafka):
                 except Exception as e:
                     print(f"[ERROR KAFKA] No se pudo tratar el mensaje {mensaje.value!r}: {e}")
         except Exception as e:
-            print(f"[ERROR KAFKA] El consumidor de Kafka se ha detenido: {e}, reconcectamos en 2s")
-            time.sleep(2)
+            print(f"[ERROR KAFKA] El consumidor de Kafka se ha detenido: {e}, reconectamos en 2s")
+       #cerramos el consumidor si se ha llegado a asignar
+        finally:
+            try:
+                if consumidor is not None:
+                    consumidor.close()
+            except Exception as e:
+                print(f"[ERROR KAFKA] Fallo al cerrar el consumidor: {e}")
+        time.sleep(2)
+
 
 #########################################################################
 # Bucle principal de red
@@ -258,12 +267,16 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
             id_estacion = argumentos[1]
             ubicacion = argumentos[2]
 
+            #comprobamos que la estación no está ya dada de alta para evitar duplicados
             if id_estacion in coleccion_buzones:
-                print(f"[ALERTA] Intento de registro duplicado. La estación {id_estacion} ya está conectada.")
-                # Avisamos a la estación intrusa
-                comprobar_ack(conexion, "ERROR#ID de estación ya en uso", lista_pendientes)
-                # Levantamos un error de red para forzar a manejar_hilo a cerrar este socket intruso
-                raise ConnectionAbortedError(f"Intento de duplicar la estación {id_estacion}")
+                #comprobamos que no sea una estaión registrándose de nuevo
+                if buzon_salida == coleccion_buzones[id_estacion] : pass
+                else:
+                    print(f"[ALERTA] Intento de registro duplicado. La estación {id_estacion} ya está conectada.")
+                    # Avisamos a la estación intrusa
+                    comprobar_ack(conexion, "ERROR#ID de estación ya en uso", lista_pendientes)
+                    # Levantamos un error de red para forzar a manejar_hilo a cerrar este socket intruso
+                    raise ConnectionAbortedError(f"Intento de duplicar la estación {id_estacion}")
             
             db_manager.registrar_estacion(id_estacion, ubicacion)
             print(f"[REGISTRO]: anotada la estación {id_estacion} en {ubicacion}")
