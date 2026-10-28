@@ -579,6 +579,35 @@ def activar(id_estacion, conexion):
 #########################################################################
 # Menú interactivo de la Central
 #########################################################################
+
+#Orden de menú -> acción que entiende despachar_orden
+ACCIONES_MENU = {
+    "2": "PETICION_RIEGO",
+    "3": "PETICION_PARADA",
+    "4": "BLOQUEAR",
+    "5": "ACTIVAR",
+}
+
+
+def orden_menu(accion, id_estacion):
+    #'*' significa "todas las estaciones conectadas"
+    if id_estacion == "*":
+        #list para que los hilos de las estaciones pueden añadir o quitar buzones mientras recorremos sin petar
+        destinos = list(coleccion_buzones.items())
+        if not destinos:
+            print(f"{AMARILLO}[AVISO]{RESET} No hay estaciones conectadas.")
+            return
+        for id, buzon in destinos:
+            buzon.put((accion, "CENTRAL", id))
+        print(f"{VERDE}[OK]{RESET} Orden {accion} enviada a {len(destinos)} estación(es) conectada(s)")
+    else:
+        buzon = coleccion_buzones.get(id_estacion)
+        if buzon is None:
+            print(f"{ROJO}[ERROR]{RESET} La estación {id_estacion} no está conectada.")
+            return
+        buzon.put((accion, "CENTRAL", id_estacion))
+        print(f"{VERDE}[OK]{RESET} Orden {accion} enviada a {id_estacion}")
+
 def menu_central():
     # Pausa inicial para no solaparse con los mensajes de arranque del servidor
     time.sleep(1.5)
@@ -588,10 +617,10 @@ def menu_central():
         print("         PANEL DE CONTROL CENTRAL       ")
         print("========================================")
         print("1. Consultar estado de las estaciones")
-        print("2. Iniciar riego en una estación")
-        print("3. Detener riego en una estación")
-        print("4. Bloquear estación (Fuera de servicio)")
-        print("5. Activar estación (Volver a disponible)")
+        print("2. Iniciar riego       (ID de estación, o * para todas)")
+        print("3. Detener riego       (ID de estación, o * para todas)")
+        print("4. Bloquear estación   (ID de estación, o * para todas)")
+        print("5. Activar estación    (ID de estación, o * para todas)")
         print("========================================")
 
         opcion = input("Selecciona una opción:\n").strip()
@@ -620,37 +649,9 @@ def menu_central():
 
                     print(f" -> {id_est} ({ubicacion}): Estado = {color}{estado}{RESET} | Operario = {operario} | Caudal = {caudal} L/m | Vol = {volumen} L")
 
-            case "2":
-                id_estacion = input("ID de la estación a regar: ").strip()
-                if id_estacion in coleccion_buzones:
-                    coleccion_buzones[id_estacion].put(("PETICION_RIEGO", "CENTRAL", id_estacion))
-                    print(f"{VERDE}[OK]{RESET} Orden de INICIO enviada a {id_estacion}")
-                else:
-                    print(f"{ROJO}[ERROR]{RESET} La estación {id_estacion} no está conectada.")
-
-            case "3":
-                id_estacion = input("ID de la estación a detener: ").strip()
-                if id_estacion in coleccion_buzones:
-                    coleccion_buzones[id_estacion].put(("PETICION_PARADA", "CENTRAL", id_estacion))
-                    print(f"{VERDE}[OK]{RESET} Orden de PARADA enviada a {id_estacion}")
-                else:
-                    print(f"{ROJO}[ERROR]{RESET} La estación {id_estacion} no está conectada.")
-
-            case "4":
-                id_estacion = input("ID de la estación a BLOQUEAR: ").strip()
-                if id_estacion in coleccion_buzones:
-                    coleccion_buzones[id_estacion].put(("BLOQUEAR", "CENTRAL", id_estacion))
-                    print(f"{VERDE}[OK]{RESET} Orden de BLOQUEO enviada a {id_estacion}")
-                else:
-                    print(f"{ROJO}[ERROR]{RESET} La estación {id_estacion} no está conectada.")
-
-            case "5":
-                id_estacion = input("ID de la estación a ACTIVAR: ").strip()
-                if id_estacion in coleccion_buzones:
-                    coleccion_buzones[id_estacion].put(("ACTIVAR", "CENTRAL", id_estacion))
-                    print(f"{VERDE}[OK]{RESET} Orden de ACTIVACIÓN enviada a {id_estacion}")
-                else:
-                    print(f"{ROJO}[ERROR]{RESET} La estación {id_estacion} no está conectada.")
+            case "2" | "3" | "4" | "5":
+                id_estacion = input("ID de la estación (* = todas las conectadas): ").strip()
+                orden_menu(ACCIONES_MENU[opcion], id_estacion)
 
             case _:
                 print(f"{ROJO}[ERROR]{RESET} Opción no válida. Inténtalo de nuevo.")
