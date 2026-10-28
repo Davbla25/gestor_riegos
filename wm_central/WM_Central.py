@@ -609,6 +609,35 @@ def orden_menu(accion, id_estacion):
         buzon.put((accion, "CENTRAL", id_estacion))
         print(f"{VERDE}[OK]{RESET} Orden {accion} enviada a {id_estacion}")
 
+
+#Orden de menú -> acción que entiende despachar_orden
+ACCIONES_MENU = {
+    "2": "PETICION_RIEGO",
+    "3": "PETICION_PARADA",
+    "4": "BLOQUEAR",
+    "5": "ACTIVAR",
+}
+
+
+def orden_menu(accion, id_estacion):
+    #'*' significa "todas las estaciones conectadas"
+    if id_estacion == "*":
+        #list para que los hilos de las estaciones pueden añadir o quitar buzones mientras recorremos sin petar
+        destinos = list(coleccion_buzones.items())
+        if not destinos:
+            print(f"{AMARILLO}[AVISO]{RESET} No hay estaciones conectadas.")
+            return
+        for id, buzon in destinos:
+            buzon.put((accion, "CENTRAL", id))
+        print(f"{VERDE}[OK]{RESET} Orden {accion} enviada a {len(destinos)} estación(es) conectada(s)")
+    else:
+        buzon = coleccion_buzones.get(id_estacion)
+        if buzon is None:
+            print(f"{ROJO}[ERROR]{RESET} La estación {id_estacion} no está conectada.")
+            return
+        buzon.put((accion, "CENTRAL", id_estacion))
+        print(f"{VERDE}[OK]{RESET} Orden {accion} enviada a {id_estacion}")
+
 def menu_central():
     # Pausa inicial para no solaparse con los mensajes de arranque del servidor
     time.sleep(1.5)
@@ -622,14 +651,38 @@ def menu_central():
         print("3. Detener riego       (ID de estación, o * para todas)")
         print("4. Bloquear estación   (ID de estación, o * para todas)")
         print("5. Activar estación    (ID de estación, o * para todas)")
+        print("2. Iniciar riego       (ID de estación, o * para todas)")
+        print("3. Detener riego       (ID de estación, o * para todas)")
+        print("4. Bloquear estación   (ID de estación, o * para todas)")
+        print("5. Activar estación    (ID de estación, o * para todas)")
         print("========================================")
 
         opcion = input("Selecciona una opción:\n").strip()
 
         match opcion:
             case "1":
-                panel.mostrar_panel()
-                
+                filas = db_manager.listar_estaciones()
+                print("\n[ESTADO DE ESTACIONES EN SISTEMA]")
+                if not filas:
+                    print("  No hay estaciones registradas aún.")
+                for est in filas:
+                    id_est, ubicacion, estado, operario, caudal, volumen = est
+                    operario = operario or "Ninguno"
+                    caudal = caudal or 0
+                    volumen = volumen or 0
+
+                    # Asignación de color según el estado
+                    if estado == "REGANDO":
+                        color = VERDE
+                    elif estado in ["FUGA", "PARADA", "DESCONECTADA"]:
+                        color = ROJO
+                    elif estado == "SOLICITADA":
+                        color = AMARILLO
+                    else:
+                        color = AZUL
+
+                    print(f" -> {id_est} ({ubicacion}): Estado = {color}{estado}{RESET} | Operario = {operario} | Caudal = {caudal} L/m | Vol = {volumen} L")
+
             case "2" | "3" | "4" | "5":
                 id_estacion = input("ID de la estación (* = todas las conectadas): ").strip()
                 orden_menu(ACCIONES_MENU[opcion], id_estacion)
