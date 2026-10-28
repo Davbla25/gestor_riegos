@@ -6,6 +6,7 @@ import db_manager
 from kafka import KafkaConsumer, KafkaProducer
 import queue
 import time
+import panel
 
 # Códigos de colores ANSI para la consola
 VERDE = "\033[92m"
@@ -627,28 +628,8 @@ def menu_central():
 
         match opcion:
             case "1":
-                filas = db_manager.listar_estaciones()
-                print("\n[ESTADO DE ESTACIONES EN SISTEMA]")
-                if not filas:
-                    print("  No hay estaciones registradas aún.")
-                for est in filas:
-                    id_est, ubicacion, estado, operario, caudal, volumen = est
-                    operario = operario or "Ninguno"
-                    caudal = caudal or 0
-                    volumen = volumen or 0
-
-                    # Asignación de color según el estado
-                    if estado == "REGANDO":
-                        color = VERDE
-                    elif estado in ["FUGA", "PARADA", "DESCONECTADA"]:
-                        color = ROJO
-                    elif estado == "SOLICITADA":
-                        color = AMARILLO
-                    else:
-                        color = AZUL
-
-                    print(f" -> {id_est} ({ubicacion}): Estado = {color}{estado}{RESET} | Operario = {operario} | Caudal = {caudal} L/m | Vol = {volumen} L")
-
+                panel.mostrar_panel()
+                
             case "2" | "3" | "4" | "5":
                 id_estacion = input("ID de la estación (* = todas las conectadas): ").strip()
                 orden_menu(ACCIONES_MENU[opcion], id_estacion)
