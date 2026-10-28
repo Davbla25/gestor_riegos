@@ -5,6 +5,12 @@ import argparse
 from kafka import KafkaProducer, KafkaConsumer
 from kafka.errors import KafkaError
 
+# Códigos de colores ANSI para la consola
+VERDE = "\033[92m"
+ROJO = "\033[91m"
+AMARILLO = "\033[93m"
+AZUL = "\033[94m"
+RESET = "\033[0m"
 
 # PARÁMETROS: línea de comandos (prioritaria) o variables de entorno
 #   python WM_FO.py <broker host:puerto> <ID_OPERARIO> [fichero_servicios]
@@ -111,14 +117,14 @@ def procesar(texto):
     tipo, destinatario, contenido = partes
 
     if destinatario == "ALL":
-        print(f"\n[ALERTA GLOBAL] {contenido}")
+        print(f"\n{ROJO}[ALERTA GLOBAL]{RESET} {contenido}")
         return
     if destinatario != ID_OPERARIO:
         return  # no es para este operario
 
     evento_respuesta.set()
     if tipo == "ERROR":
-        print(f"\n[ERROR CENTRAL] {contenido}")
+        print(f"\n[{ROJO}ERROR CENTRAL]{RESET} {contenido}")
     elif tipo == "INFO":
         etiqueta = "MÉTRICAS" if contenido.startswith("Métricas") else "INFO CENTRAL"
         print(f"\n[{etiqueta}] {contenido}")
