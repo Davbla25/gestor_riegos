@@ -191,6 +191,7 @@ def WM_WS_M(args):
                                 averia = nueva_averia
                                 if averia:
                                     print(f"{ROJO}[ALERTA LOCAL] El Engine reporta AVERÍA (Fuga){RESET}")
+                                    # Opcional: Reenviar la avería a la Central aquí si no lo hace ya el bucle principal
                                 else:
                                     print(f"{VERDE}[INFO LOCAL] El Engine reporta estado OK{RESET}")
                         else:

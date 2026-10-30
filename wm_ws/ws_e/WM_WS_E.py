@@ -118,7 +118,10 @@ def WM_WS_E(args):
     bloqueada = False
     volumen = 0.0
     t_ultimo = t_metrica = 0.0
+    estado_salud_anterior = None # <-- AÑADE ESTO AQUÍ
 
+
+    estado_salud_anterior = None
     while True:
         cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
@@ -141,6 +144,11 @@ def WM_WS_E(args):
                     print(f"[ERROR DE PROTOCOLO] {e}")
 
                 ahora = time.monotonic()
+
+                estado_actual = "KO" if ko else "OK"
+                if estado_actual != estado_salud_anterior:
+                    enviar(cliente, f"SALUD#{ID_ESTACION}#{estado_actual}")
+                    estado_salud_anterior = estado_actual
                 
                 # --- Procesar órdenes desde el Monitor ---
                 if mensaje:
