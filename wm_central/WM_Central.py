@@ -363,6 +363,11 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
                     notificar_operario(f"ERROR#{operario}#No se pudo iniciar el riego, motivo: {motivo}")
 
         case "METRICAS":
+            #Esto es por si recibimos métricas tras una caída
+            if db_manager.obtener_estado(argumentos[1]) in ("DISPONIBLE", "DESCONECTADA"):
+                print(f"[RECUPERACIÓN] La estación {argumentos[1]} emite métricas tras una caída. Restaurando riego...")
+                db_manager.recuperar_estado_riego(argumentos[1])
+
             print(f"[MÉTRICAS] la estación: {argumentos[1]} tiene un caudal de:{argumentos[2]} y un volumen de {argumentos[3]}")
             #Guardamos en la BD para que no se pierdan
             db_manager.actualizar_metricas(argumentos[1], argumentos[2], argumentos[3])
@@ -386,10 +391,20 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
                     notificar_operario(f"INFO#{operario}#Riego finalizado con éxito. Resumen: {resumen}")
                 comprobar_ack(conexion, "Fin de riego correctamente anotado", lista_pendientes)
             else:
-                  #Puede ser el FIN_RIEGO de una estación que se recupera de una avería: el riego ya se cerró (fuga,
-                #bloqueo o desconexión) con la última métrica, y ahora la estación nos da el volumen final real
-                if volumen_final is not None and db_manager.corregir_volumen_ultimo_riego(argumentos[1], volumen_final):
-                    print(f"[FIN_RIEGO] la estación: {argumentos[1]} informa del volumen final de su último riego: {volumen_final} L (histórico corregido)")
+                # recuperación tardía
+                resumen_recuperado = None
+                if volumen_final is not None:
+                    resumen_recuperado = db_manager.corregir_volumen_ultimo_riego(argumentos[1], volumen_final)
+                
+                if resumen_recuperado:
+                    res = texto_resumen(resumen_recuperado)
+                    print(f"[FIN_RIEGO] la estación {argumentos[1]} informa del volumen final de su último riego (histórico corregido)")
+                    
+                    db_manager.cambiar_estado_disponible(argumentos[1])
+                    
+                    # Notificamos al operario que no recibió su aviso por la caída
+                    if op := resumen_recuperado.get("operario"):
+                        notificar_operario(f"INFO#{op}#Riego finalizado (tras recuperación de la Central). Resumen: {res}")
                 else:
                     print(f"[FIN_RIEGO] la estación: {argumentos[1]} nos avisa de que acaba de regar, pero no está regando")
                 comprobar_ack(conexion, "La estación no se encuentra regando en estos momentos", lista_pendientes)
