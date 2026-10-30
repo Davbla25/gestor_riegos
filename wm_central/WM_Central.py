@@ -155,7 +155,6 @@ def manejar_hilo(conexion, direccion):
         #en caso de seguir el protocolo, enviamos ACK y empezamos el bucle de la conexión
         conexion.send(common.protocol.ACK)
         print(f"[NUEVA CONEXIÓN] Establecimiento exitoso con {direccion}")
-        ultimo_contacto = time.time()
         #Bucle principal donde escuchamos el socket de la estación
         while True:
             try:
@@ -168,7 +167,6 @@ def manejar_hilo(conexion, direccion):
                     continue
                 #desempaquetamos la trama, devolvemos ACK y pasamos a analizar el mensaje
                 mensaje_recibido = common.protocol.desempaquetar(trama_recibida)
-                ultimo_contacto = time.time()
                 print(f"[MENSAJE de {direccion}]: {mensaje_recibido}")
                 conexion.send(common.protocol.ACK)
                 #guardamos el id de la estación si manda registro
@@ -179,9 +177,6 @@ def manejar_hilo(conexion, direccion):
             #Manejamos las posibles excepciones que salten
             except socket.timeout:
                 # Si han pasado más de 5 segundos sin recibir NADA, la damos por muerta
-                if time.time() - ultimo_contacto > 5.0:
-                    print(f"[TIMEOUT] Se ha perdido la señal de vida de {direccion}. Desconectando...")
-                    break #
                 pass
             except (ValueError, IndexError) as e:
                 print(f"[ERROR DE PROTOCOLO] {e}")
