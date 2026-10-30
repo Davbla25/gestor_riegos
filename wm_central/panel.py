@@ -52,18 +52,18 @@ def _fila(estacion, parpadeo, ancho):
     if estado == "REGANDO" and parpadeo:
         fondo = FONDO_VERDE_CLARO
 
-    # Detalle: caudal | volumen acumulado | operario ("Op"). Está pensado para caber en un terminal de 80 columnas
+    # Si 'operario' está vacío (porque el riego lo inició la propia estación físicamente), mostrará 'LOCAL'.
     if estado == "REGANDO":
-        detalle = f"{caudal or 0} L/min | {volumen or 0} L | Op: {operario or '-'}"
+        detalle = f"Op: {operario or 'LOCAL'} | {caudal or 0} L/m | {volumen or 0} L"
     elif estado == "SOLICITADA":
-        detalle = f"Esperando autorización | Op: {operario or '-'}"
+        detalle = f"Op: {operario or '-'} | Esperando..."
     else:
         detalle = ""
 
-    linea = f" {str(id_est)[:8]:<8} {str(ubicacion or '-')[:18]:<18} {leyenda:<17} {detalle}"
+    # Reducimos los márgenes ligeramente para que quepa más información
+    linea = f" {str(id_est)[:8]:<8} {str(ubicacion or '-')[:15]:<15} {leyenda:<17} {detalle}"
     linea = linea[:ancho]
     return f"{fondo}{texto}{linea:<{ancho}}{RESET}"
-
 
 def _componer_frame():
     parpadeo = int(time.time()) % 2 == 0

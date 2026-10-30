@@ -368,7 +368,6 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
                 print(f"[RECUPERACIÓN] La estación {argumentos[1]} emite métricas tras una caída. Restaurando riego...")
                 db_manager.recuperar_estado_riego(argumentos[1])
 
-            print(f"[MÉTRICAS] la estación: {argumentos[1]} tiene un caudal de:{argumentos[2]} y un volumen de {argumentos[3]}")
             #Guardamos en la BD para que no se pierdan
             db_manager.actualizar_metricas(argumentos[1], argumentos[2], argumentos[3])
             db_manager.actualizar_volumen_riego(argumentos[1], argumentos[3])
