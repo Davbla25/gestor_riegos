@@ -64,6 +64,38 @@ def configurar(args):
     DURACION_RIEGO = args.duracion_riego
     PLAZO_RESPUESTA = args.plazo_respuesta
 
+    
+def mostrar_panel_fo(contenido):
+    # Limpia la consola para simular la nueva ventana/panel
+    os.system('clear')
+    
+    print(f"{AZUL}========================================{RESET}")
+    print(f"{AZUL}      PANEL DE ESTACIONES EN VIVO       {RESET}")
+    print(f"{AZUL}========================================{RESET}")
+    
+    lista_cruda = contenido.replace("Estaciones disponibles: ", "")
+    estaciones = lista_cruda.split(" / ")
+    
+    for est in estaciones:
+        if not est.strip(): continue
+        
+        # Asignar color según el estado detectado en la cadena
+        if "DISPONIBLE" in est:
+            color = VERDE
+        elif "REGANDO" in est:
+            color = AZUL
+        elif "FUGA" in est or "DESCONECTADA" in est:
+            color = ROJO
+        elif "PARADA" in est or "SOLICITADA" in est:
+            color = AMARILLO
+        else:
+            color = RESET
+            
+        print(f" {color}🔹 {est.strip()}{RESET}")
+        
+    print(f"{AZUL}========================================{RESET}")
+    # Forzamos un salto de línea limpio antes de que el menú vuelva a imprimirse
+    print("\n")
 #########################################################
 # VALIDADORES argparse
 #########################################################
@@ -126,8 +158,12 @@ def procesar(texto):
     if tipo == "ERROR":
         print(f"\n[{ROJO}ERROR CENTRAL]{RESET} {contenido}")
     elif tipo == "INFO":
-        etiqueta = "MÉTRICAS" if contenido.startswith("Métricas") else "INFO CENTRAL"
-        print(f"\n[{etiqueta}] {contenido}")
+        if contenido.startswith("Estaciones disponibles:"):
+            mostrar_panel_fo(contenido)
+        else:
+            etiqueta = "MÉTRICAS" if contenido.startswith("Métricas") else "INFO CENTRAL"
+            print(f"\n[{etiqueta}] {contenido}")
+            
         if "dado de alta" in contenido:
             evento_registro.set()
         if contenido.startswith("Riego iniciado"):
@@ -291,7 +327,7 @@ def menu():
             hilo_fichero = threading.Thread(target=ejecutar_fichero, args=(ruta,), daemon=True)
             hilo_fichero.start()
         elif opcion == "4":
-            if enviar(f"LISTAR_ESTACIONES#{ID_OPERARIO}"):
+            if enviar(f"LISTAR_ESTACIONES#{ID_OPERARIO}#FO"):
                 print("[ENVIADO] Solicitando lista de estaciones a la Central...")
         elif opcion == "5":
             return

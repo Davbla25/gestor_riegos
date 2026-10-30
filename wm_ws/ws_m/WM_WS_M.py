@@ -150,7 +150,10 @@ def WM_WS_M(args):
                 if cliente:
                     cliente.close()
                 cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                cliente.settimeout(TICK)
+                
+                # [!] AÑADIDO: Dar 5 segundos a la Central para procesar la base de datos
+                cliente.settimeout(5.0) 
+                
                 try:
                     cliente.connect((IP_CENTRAL, PUERTO_CENTRAL))
                     cliente.send(common.protocol.ENQ)
@@ -162,8 +165,11 @@ def WM_WS_M(args):
                             print(f"{VERDE}[INFO] Conectado y registrado en WM_Central{RESET}")
                             central_conectada = True
                             estado_enviado = None 
+                            
+                            # [!] AÑADIDO: Restaurar el timeout rápido para el funcionamiento normal
+                            cliente.settimeout(TICK) 
                 except OSError:
-                    pass 
+                    pass
 
             # --- 2. ACEPTAR ENGINE (Local) ---
             if conexion_engine is None:
@@ -191,6 +197,7 @@ def WM_WS_M(args):
                                 averia = nueva_averia
                                 if averia:
                                     print(f"{ROJO}[ALERTA LOCAL] El Engine reporta AVERÍA (Fuga){RESET}")
+                                    # Opcional: Reenviar la avería a la Central aquí si no lo hace ya el bucle principal
                                 else:
                                     print(f"{VERDE}[INFO LOCAL] El Engine reporta estado OK{RESET}")
                         else:
