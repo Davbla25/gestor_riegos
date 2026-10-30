@@ -18,6 +18,11 @@ NUM_ESTACIONES=3
 
 echo "🚀 3. Abriendo ventanas para $NUM_ESTACIONES estaciones..."
 
+echo "🧹 Limpiando contenedores anteriores..."
+# Elimina todos los contenedores que contengan "monitor" o "engine" en el nombre
+docker rm -f $(docker ps -aq --filter name="-monitor") 2>/dev/null || true
+docker rm -f $(docker ps -aq --filter name="-engine") 2>/dev/null || true
+
 for i in $(seq 1 $NUM_ESTACIONES); do
     ID=$(printf "WS_%02d" $i)
     PUERTO=$((5000 + i))

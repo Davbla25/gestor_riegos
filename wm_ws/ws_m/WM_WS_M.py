@@ -186,7 +186,13 @@ def WM_WS_M(args):
                         t_respuesta = ahora
                         partes = mensaje_engine.split('#')
                         if partes[0] == "SALUD":
-                            averia = len(partes) < 3 or partes[2] != "OK"
+                            nueva_averia = (len(partes) < 3 or partes[2] != "OK")
+                            if nueva_averia != averia:
+                                averia = nueva_averia
+                                if averia:
+                                    print(f"{ROJO}[ALERTA LOCAL] El Engine reporta AVERÍA (Fuga){RESET}")
+                                else:
+                                    print(f"{VERDE}[INFO LOCAL] El Engine reporta estado OK{RESET}")
                         else:
                             para_central = mensaje_engine
                             # Añadir estos print para reflejar visualmente la actividad local
