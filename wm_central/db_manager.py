@@ -158,21 +158,38 @@ def cerrar_riego(id_estacion, motivo, volumen_final=None):
     return {"operario": operario, "volumen": volumen or 0, "duracion": fin - inicio, "motivo": motivo}
  
 def corregir_volumen_ultimo_riego(id_estacion, volumen):
-    #Para el FIN_RIEGO tardío de una estación que se recupera: si el volumen que informa es mayor que el que
-    #teníamos guardado en su último riego (ya cerrado), lo corregimos. Devuelve True si se ha actualizado
     conexion = sqlite3.connect(ruta_bd)
     cursor = conexion.cursor()
-    cursor.execute("SELECT id, volumen FROM riegos WHERE id_estacion = ? ORDER BY id DESC LIMIT 1", (id_estacion,))
+    cursor.execute("SELECT id, volumen, operario, inicio, fin FROM riegos WHERE id_estacion = ? ORDER BY id DESC LIMIT 1", (id_estacion,))
     fila = cursor.fetchone()
-    corregido = False
+    resumen = None
     if fila is not None and volumen > (fila[1] or 0):
-        cursor.execute("UPDATE riegos SET volumen = ? WHERE id = ?", (volumen, fila[0]))
-        corregido = True
+        id_riego, vol_ant, operario, inicio, fin = fila
+        cursor.execute("UPDATE riegos SET volumen = ? WHERE id = ?", (volumen, id_riego))
+        
+        # Preparamos el resumen para poder notificar al operario histórico
+        duracion = (fin if fin else time.time()) - inicio
+        resumen = {"operario": operario, "volumen": volumen, "duracion": duracion, "motivo": MOTIVO_REINICIO}
+        
     cursor.close()
     conexion.commit()
     conexion.close()
-    return corregido
- 
+    return resumen
+
+def recuperar_estado_riego(id_estacion):
+    conexion = sqlite3.connect(ruta_bd)
+    cursor = conexion.cursor()
+    # Buscamos el último riego registrado de esta estación
+    cursor.execute("SELECT id, operario FROM riegos WHERE id_estacion = ? ORDER BY id DESC LIMIT 1", (id_estacion,))
+    fila = cursor.fetchone()
+    if fila:
+        id_riego, operario = fila
+        # Restauramos la sesión: le quitamos el fin para que siga abierto
+        cursor.execute("UPDATE riegos SET fin = NULL, motivo_fin = NULL WHERE id = ?", (id_riego,))
+        # Restauramos el estado de la estación a REGANDO y le devolvemos su operario original
+        cursor.execute("UPDATE estaciones SET estado = 'REGANDO', operario_actual = ? WHERE id = ?", (operario, id_estacion))
+        conexion.commit()
+    conexion.close()
 
 #########################################################################
 # FUNCIONES DE OPERARIO
