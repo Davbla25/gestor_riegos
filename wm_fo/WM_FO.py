@@ -266,7 +266,7 @@ def menu():
     hilo_fichero = None
     while True:
         print("\n--------OPCIONES--------")
-        print(" 1. INICIAR RIEGO\n 2. PARAR RIEGO\n 3. EJECUTAR SERVICIOS DEL FICHERO\n 4. SALIR")
+        print(" 1. INICIAR RIEGO\n 2. PARAR RIEGO\n 3. EJECUTAR SERVICIOS DEL FICHERO\n 4. LISTAR ESTACIONES\n 5. SALIR")
         try:
             opcion = input("¿QUÉ QUIERES HACER? ").strip()
         except EOFError:
@@ -291,11 +291,12 @@ def menu():
             hilo_fichero = threading.Thread(target=ejecutar_fichero, args=(ruta,), daemon=True)
             hilo_fichero.start()
         elif opcion == "4":
+            if enviar(f"LISTAR_ESTACIONES#{ID_OPERARIO}"):
+                print("[ENVIADO] Solicitando lista de estaciones a la Central...")
+        elif opcion == "5":
             return
         else:
             print("[ERROR] Opción no válida")
-
-
 #########################################################################
 # Arranque
 #########################################################################
