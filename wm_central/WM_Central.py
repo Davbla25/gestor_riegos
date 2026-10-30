@@ -155,7 +155,6 @@ def manejar_hilo(conexion, direccion):
         #en caso de seguir el protocolo, enviamos ACK y empezamos el bucle de la conexión
         conexion.send(common.protocol.ACK)
         print(f"[NUEVA CONEXIÓN] Establecimiento exitoso con {direccion}")
-
         #Bucle principal donde escuchamos el socket de la estación
         while True:
             try:
@@ -177,7 +176,7 @@ def manejar_hilo(conexion, direccion):
                 tratar_mensaje_estacion(mensaje_recibido, direccion, conexion, buzon_salida)
             #Manejamos las posibles excepciones que salten
             except socket.timeout:
-                #si pasado el tiempo no recibimos nada, continúa la ejecución
+                # Si han pasado más de 5 segundos sin recibir NADA, la damos por muerta
                 pass
             except (ValueError, IndexError) as e:
                 print(f"[ERROR DE PROTOCOLO] {e}")
