@@ -17,6 +17,7 @@ RESET = "\033[0m"
 
 #Tiempo máximo (en segundos) que esperamos el ACK en cada intento de envío
 PLAZO_ACK = 1.5
+PLAZO_ACK = 1.5
 
 #Diccionario donde iremos apuntando los buzones de las estaciones conectadas para usar en Kafka y en el menú
 coleccion_buzones = {}
@@ -28,6 +29,27 @@ productor_respuestas = None
 #Hereda de ConnectionError para que el bucle de la estación la trate como una conexión perdida y salga por el finally
 class EstacionInalcanzable(ConnectionError):
     pass
+#########################################################################
+# Utilidades para los resúmenes de riego
+#########################################################################
+def formatear_duracion(segundos):
+    segundos = int(segundos)
+    minutos, segundos = divmod(segundos, 60)
+    return f"{minutos} min {segundos} s" if minutos else f"{segundos} s"
+ 
+ 
+def texto_resumen(riego):
+    #riego es el diccionario que devuelve db_manager.cerrar_riego
+    return f"{riego['volumen']:.1f} Litros en {formatear_duracion(riego['duracion'])}"
+ 
+ 
+def volumen_del_mensaje(argumentos, posicion):
+    #Devuelve el volumen que viene en el mensaje de la estación (campo opcional), o None si no viene o no es un número
+    try:
+        return float(argumentos[posicion])
+    except (IndexError, ValueError):
+        return None
+ 
 #########################################################################
 # Utilidades para los resúmenes de riego
 #########################################################################
@@ -212,9 +234,13 @@ def manejar_hilo(conexion, direccion):
                 operario = db_manager.obtener_operario(id_estacion_actual)
                 #cerramos el riego (si lo había) guardando lo que se había regado hasta el corte
                 riego = db_manager.cerrar_riego(id_estacion_actual, db_manager.MOTIVO_DESCONEXION)
+                #cerramos el riego (si lo había) guardando lo que se había regado hasta el corte
+                riego = db_manager.cerrar_riego(id_estacion_actual, db_manager.MOTIVO_DESCONEXION)
                 db_manager.cambiar_estado_desconectada(id_estacion_actual)
                 coleccion_buzones.pop(id_estacion_actual, None)
                 if operario:
+                    detalle = f" Regado hasta el corte: {texto_resumen(riego)}." if riego else ""
+                    notificar_operario(f"ERROR#{operario}#Se ha perdido la conexión física con la estación {id_estacion_actual}.{detalle}")
                     detalle = f" Regado hasta el corte: {texto_resumen(riego)}." if riego else ""
                     notificar_operario(f"ERROR#{operario}#Se ha perdido la conexión física con la estación {id_estacion_actual}.{detalle}")
         finally:
@@ -275,6 +301,9 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
                  #Cerramos el riego en curso (si lo había) guardando lo regado hasta ahora
                 riego = db_manager.cerrar_riego(argumentos[1], db_manager.MOTIVO_FUGA)
 
+                 #Cerramos el riego en curso (si lo había) guardando lo regado hasta ahora
+                riego = db_manager.cerrar_riego(argumentos[1], db_manager.MOTIVO_FUGA)
+
                 #Si la estación estaba soltando agua, le mandamos el cierre de emergencia
                 if estado_previo in ["REGANDO", "SOLICITADA"]:
                     print(f"[EMERGENCIA] Cerrando válvula de {argumentos[1]} por fuga...")
@@ -284,6 +313,8 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
                 print(f"[ALERTA] la estación {argumentos[1]} ha detectado una fuga")
                 #Avisamos al operario al que le hemos cortado el riego y lanzamos la alerta general
                 if operario_afectado:
+                    detalle = f" Regado hasta el corte: {texto_resumen(riego)}." if riego else ""
+                    notificar_operario(f"ERROR#{operario_afectado}#La estación {argumentos[1]} ha detectado una fuga y aborta el riego.{detalle}")
                     detalle = f" Regado hasta el corte: {texto_resumen(riego)}." if riego else ""
                     notificar_operario(f"ERROR#{operario_afectado}#La estación {argumentos[1]} ha detectado una fuga y aborta el riego.{detalle}")
                 notificar_operario(f"ALERTA#ALL#¡FUGA detectada en la estación {argumentos[1]}!")
@@ -310,10 +341,18 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
             operario_previo = db_manager.obtener_operario(id_estacion)
             riego_previo = db_manager.cerrar_riego(id_estacion, db_manager.MOTIVO_INTERRUMPIDO)
  
+
+             #Si se registra de nuevo con un riego abierto, el registro lo corta: lo cerramos para no perder lo regado
+            #(registrar_estacion sobrescribe la fila de la estación y borraría el operario y el volumen)
+            operario_previo = db_manager.obtener_operario(id_estacion)
+            riego_previo = db_manager.cerrar_riego(id_estacion, db_manager.MOTIVO_INTERRUMPIDO)
+ 
             db_manager.registrar_estacion(id_estacion, ubicacion)
             print(f"[REGISTRO]: anotada la estación {id_estacion} en {ubicacion}")
             #Nos guardamos la cola en un diccionario para después poder acceder a ella desde Kafka y el menú
             coleccion_buzones[argumentos[1]] = buzon_salida
+            if riego_previo and operario_previo:
+                notificar_operario(f"ERROR#{operario_previo}#La estación {id_estacion} se ha vuelto a registrar y ha interrumpido el riego. Regado: {texto_resumen(riego_previo)}.")
             if riego_previo and operario_previo:
                 notificar_operario(f"ERROR#{operario_previo}#La estación {id_estacion} se ha vuelto a registrar y ha interrumpido el riego. Regado: {texto_resumen(riego_previo)}.")
             comprobar_ack(conexion, "Estación correctamente dada de alta en el sistema", lista_pendientes)
@@ -324,6 +363,8 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
             if estado == "DISPONIBLE":
                 print(f"[INICIO_RIEGO] la estación: {argumentos[1]} nos avisa de que comienza a regar")
                 db_manager.cambiar_estado_riego(argumentos[1])
+                #registramos el riego (no hay operario: lo ha iniciado la propia estación)
+                db_manager.abrir_riego(argumentos[1], "ESTACION")
                 #registramos el riego (no hay operario: lo ha iniciado la propia estación)
                 db_manager.abrir_riego(argumentos[1], "ESTACION")
                 if not comprobar_ack(conexion, "Inicio de riego correctamente anotado", lista_pendientes):
@@ -343,6 +384,8 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
             else:
                 db_manager.cambiar_estado_riego(argumentos[1])
                 operario = db_manager.obtener_operario(argumentos[1])
+                 #registramos el inicio del riego
+                db_manager.abrir_riego(argumentos[1], operario)
                  #registramos el inicio del riego
                 db_manager.abrir_riego(argumentos[1], operario)
                 print(f"[RIEGO AUTORIZADO] la estación {argumentos[1]} ha iniciado con éxito")
@@ -368,12 +411,14 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
             #Guardamos en la BD para que no se pierdan
             db_manager.actualizar_metricas(argumentos[1], argumentos[2], argumentos[3])
             db_manager.actualizar_volumen_riego(argumentos[1], argumentos[3])
+            db_manager.actualizar_volumen_riego(argumentos[1], argumentos[3])
             #Se lo enviamos al operario
             if operario := db_manager.obtener_operario(argumentos[1]):
                 notificar_operario(f"INFO#{operario}#Métricas actuales - Caudal: {argumentos[2]} L/m, Volumen: {argumentos[3]} L")
 
         case "FIN_RIEGO":
             estado = db_manager.obtener_estado(argumentos[1])
+            volumen_final = volumen_del_mensaje(argumentos, 2)
             volumen_final = volumen_del_mensaje(argumentos, 2)
             if estado == "REGANDO":
                 #Leemos las estadísticas y el operario ANTES de cambiar el estado (cambiar_estado_disponible los borra)
@@ -382,8 +427,13 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
                 riego = db_manager.cerrar_riego(argumentos[1], db_manager.MOTIVO_NORMAL, volumen_final)
                 resumen = texto_resumen(riego) if riego else f"{db_manager.obtener_volumen(argumentos[1])} Litros consumidos"
                 print(f"[FIN_RIEGO] la estación: {argumentos[1]} nos avisa de que acaba de regar. Resumen: {resumen}")
+                #Cerramos el riego: de aquí salen el volumen total y la duración del resumen
+                riego = db_manager.cerrar_riego(argumentos[1], db_manager.MOTIVO_NORMAL, volumen_final)
+                resumen = texto_resumen(riego) if riego else f"{db_manager.obtener_volumen(argumentos[1])} Litros consumidos"
+                print(f"[FIN_RIEGO] la estación: {argumentos[1]} nos avisa de que acaba de regar. Resumen: {resumen}")
                 db_manager.cambiar_estado_disponible(argumentos[1])
                 if operario:
+                    notificar_operario(f"INFO#{operario}#Riego finalizado con éxito. Resumen: {resumen}")
                     notificar_operario(f"INFO#{operario}#Riego finalizado con éxito. Resumen: {resumen}")
                 comprobar_ack(conexion, "Fin de riego correctamente anotado", lista_pendientes)
             else:
@@ -393,7 +443,15 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
                     print(f"[FIN_RIEGO] la estación: {argumentos[1]} informa del volumen final de su último riego: {volumen_final} L (histórico corregido)")
                 else:
                     print(f"[FIN_RIEGO] la estación: {argumentos[1]} nos avisa de que acaba de regar, pero no está regando")
+            else:
+                  #Puede ser el FIN_RIEGO de una estación que se recupera de una avería: el riego ya se cerró (fuga,
+                #bloqueo o desconexión) con la última métrica, y ahora la estación nos da el volumen final real
+                if volumen_final is not None and db_manager.corregir_volumen_ultimo_riego(argumentos[1], volumen_final):
+                    print(f"[FIN_RIEGO] la estación: {argumentos[1]} informa del volumen final de su último riego: {volumen_final} L (histórico corregido)")
+                else:
+                    print(f"[FIN_RIEGO] la estación: {argumentos[1]} nos avisa de que acaba de regar, pero no está regando")
                 comprobar_ack(conexion, "La estación no se encuentra regando en estos momentos", lista_pendientes)
+ 
  
         case _:
             print(f"[ERROR DE MENSAJE] el mensaje: {mensaje} enviado por: {direccion}, no sigue la convención especificada")
@@ -445,6 +503,25 @@ def tratar_mensaje_operario(mensaje):
             db_manager.registrar_operario(argumentos[1], argumentos[2])
             print(f"[ALTA DE OPERARIO] El operario: {argumentos[1]} se ha dado de alta con el nombre: {argumentos[2]} ")
             notificar_operario(f"INFO#{argumentos[1]}#Se ha dado de alta con el nombre: {argumentos[2]} ")
+
+        case "LISTAR_ESTACIONES":
+            # 1. Comprobamos que el operario esté dado de alta
+            if not db_manager.existe_operario(argumentos[1]):
+                notificar_operario(f"ERROR#{argumentos[1]}#No estás dado de alta, hazlo antes de listar estaciones")
+            else:
+                # 2. Consultamos todas las estaciones registradas en la base de datos
+                try:
+                    estaciones = db_manager.listar_estaciones()
+                    if not estaciones:
+                        notificar_operario(f"INFO#{argumentos[1]}#No hay estaciones registradas en el sistema.")
+                    else:
+                        # 3. Formateamos la lista de estaciones para enviarla por Kafka
+                        # Cada estación en la BD devuelve: (id_estacion, ubicacion, estado, operario, caudal, volumen)
+                        lista_formateada = " / ".join([f"[{est[0]}] - Ubicación: {est[1]} - Estado: {est[2]}" for est in estaciones])
+                        notificar_operario(f"INFO#{argumentos[1]}#Estaciones disponibles: {lista_formateada}")
+                except Exception as e:
+                    notificar_operario(f"ERROR#{argumentos[1]}#Error al recuperar las estaciones: {e}")
+                    
 
         case "LISTAR_ESTACIONES":
             # 1. Comprobamos que el operario esté dado de alta
@@ -616,8 +693,13 @@ def bloquear(id_estacion, conexion):
         db_manager.bloquear_estacion(id_estacion)
         #cerramos el riego (si lo había) guardando lo regado hasta el bloqueo
         riego = db_manager.cerrar_riego(id_estacion, db_manager.MOTIVO_BLOQUEO)
+        #cerramos el riego (si lo había) guardando lo regado hasta el bloqueo
+        riego = db_manager.cerrar_riego(id_estacion, db_manager.MOTIVO_BLOQUEO)
         print(f"[BLOQUEO] La estación {id_estacion} está fuera de servicio")
         if estado == "REGANDO" and operario:
+            detalle = f" Regado: {texto_resumen(riego)}." if riego else ""
+            notificar_operario(f"ERROR#{operario}#Riego interrumpido por CENTRAL (estación fuera de servicio).{detalle}")
+ 
             detalle = f" Regado: {texto_resumen(riego)}." if riego else ""
             notificar_operario(f"ERROR#{operario}#Riego interrumpido por CENTRAL (estación fuera de servicio).{detalle}")
  
@@ -714,10 +796,6 @@ def menu_central():
         print("         PANEL DE CONTROL CENTRAL       ")
         print("========================================")
         print("1. Panel de estaciones en vivo")
-        print("2. Iniciar riego       (ID de estación, o * para todas)")
-        print("3. Detener riego       (ID de estación, o * para todas)")
-        print("4. Bloquear estación   (ID de estación, o * para todas)")
-        print("5. Activar estación    (ID de estación, o * para todas)")
         print("2. Iniciar riego       (ID de estación, o * para todas)")
         print("3. Detener riego       (ID de estación, o * para todas)")
         print("4. Bloquear estación   (ID de estación, o * para todas)")
