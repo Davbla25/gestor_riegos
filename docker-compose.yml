@@ -35,7 +35,7 @@ services:
     tty: true
     build:
       context: .
-      dockerfile: wm_central/dockerfile
+      dockerfile: WM_Central/dockerfile
     ports:
       - "8080:8080"
     # La BD (SQLite) se crea en el directorio de trabajo. Lo movemos a /data, que es un volumen con nombre,
