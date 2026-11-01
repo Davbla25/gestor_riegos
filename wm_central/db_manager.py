@@ -163,13 +163,16 @@ def corregir_volumen_ultimo_riego(id_estacion, volumen):
     cursor.execute("SELECT id, volumen, operario, inicio, fin FROM riegos WHERE id_estacion = ? ORDER BY id DESC LIMIT 1", (id_estacion,))
     fila = cursor.fetchone()
     resumen = None
-    if fila is not None and volumen > (fila[1] or 0):
+    if fila is not None:
         id_riego, vol_ant, operario, inicio, fin = fila
-        cursor.execute("UPDATE riegos SET volumen = ? WHERE id = ?", (volumen, id_riego))
+        vol_final = vol_ant
+        # Actualizamos solo si hay un volumen mayor
+        if volumen is not None and volumen > (vol_ant or 0):
+            cursor.execute("UPDATE riegos SET volumen = ? WHERE id = ?", (volumen, id_riego))
+            vol_final = volumen
         
-        # Preparamos el resumen para poder notificar al operario histórico
         duracion = (fin if fin else time.time()) - inicio
-        resumen = {"operario": operario, "volumen": volumen, "duracion": duracion, "motivo": MOTIVO_REINICIO}
+        resumen = {"operario": operario, "volumen": vol_final, "duracion": duracion, "motivo": MOTIVO_REINICIO}
         
     cursor.close()
     conexion.commit()

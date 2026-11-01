@@ -293,6 +293,7 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
             id_estacion = argumentos[1]
             ubicacion = argumentos[2]
 
+            estado_previo = db_manager.obtener_estado(id_estacion)
             #comprobamos que la estación no está ya dada de alta para evitar duplicados
             if id_estacion in coleccion_buzones:
                 #comprobamos que no sea una estaión registrándose de nuevo
@@ -315,6 +316,8 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
             coleccion_buzones[argumentos[1]] = buzon_salida
             if riego_previo and operario_previo:
                 notificar_operario(f"ERROR#{operario_previo}#La estación {id_estacion} se ha vuelto a registrar y ha interrumpido el riego. Regado: {texto_resumen(riego_previo)}.")
+            if estado_previo == "FUGA":
+                notificar_operario(f"INFO#ALL#La avería en la estación {id_estacion} ha sido reparada y vuelve a estar DISPONIBLE.")
             comprobar_ack(conexion, "Estación correctamente dada de alta en el sistema", lista_pendientes)
 
         #Este caso se da si se pide iniciar el riego desde la propia estación
@@ -391,7 +394,7 @@ def tratar_mensaje_estacion(mensaje, direccion, conexion, buzon_salida):
                 comprobar_ack(conexion, "Fin de riego correctamente anotado", lista_pendientes)
             else:
                 # recuperación tardía
-                resumen_recuperado = None
+                resumen_recuperado = db_manager.corregir_volumen_ultimo_riego(argumentos[1], volumen_final)
                 if volumen_final is not None:
                     resumen_recuperado = db_manager.corregir_volumen_ultimo_riego(argumentos[1], volumen_final)
                 
