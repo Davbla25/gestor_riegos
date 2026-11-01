@@ -4,15 +4,15 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copiamos solo los requirements primero
-COPY wm_central/requirements.txt ./wm_central/
-RUN pip install --no-cache-dir -r wm_central/requirements.txt
+COPY WM_Central/requirements.txt ./WM_Central/
+RUN pip install --no-cache-dir -r WM_Central/requirements.txt
 
 # Copiamos las carpetas necesarias
 COPY common/ ./common/
-COPY wm_central/ ./wm_central/
+COPY WM_Central/ ./WM_Central/
 
 # Nos movemos a la carpeta de la central para ejecutar el código
-WORKDIR /app/wm_central
+WORKDIR /app/WM_Central
 
 # Le decimos a Python que busque módulos (como common) desde /app
 ENV PYTHONPATH=/app
