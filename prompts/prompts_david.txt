@@ -1,0 +1,330 @@
+# Historial de prompts – Práctica WaterManagement (SD 26/27)
+
+Conversación con Claude (Anthropic) durante el desarrollo de **WM_Central**, la base de datos SQLite y el protocolo de comunicación, y la preparación del despliegue.
+
+**Convenciones de este documento**
+
+- Cada prompt aparece en el orden en que se envió, con el texto escrito por el estudiante tal cual.
+- Cuando el mensaje incluía código, ficheros o fragmentos del enunciado, se indica entre corchetes `[ ... ]` qué se adjuntó, en lugar de repetirlo entero (el código está en el repositorio).
+- Se incluyen todos los mensajes del estudiante: **55 prompts**.
+
+---
+
+## Fase 1. Comprensión del enunciado
+
+### Prompt 1
+```
+Buenas, quiero que me revises un código que tengo. Es sobre un sistema distribuido de una central de riegos. Este sistema tiene una central, operarios y estaciones de riego. La central se comunica mediante sockets con las estaciones, mientras que la central se comunica con los operarios mediante Kafka.
+Te voy a pasar la mecánica de la solución, quiero que la leas, entiendas y me preguntes las dudas que tengas. Después te pasaré el código de la central, la base de datos y el protocolo de comunicación para que revises que está todo correcto.
+Mecánica:
+```
+*[Adjunto: texto de la «Mecánica de la solución» del enunciado, pasos 1 a 11.]*
+
+### Prompt 2
+```
+voy a pasarte el texto entero anterior a ver si te aclara dudas:
+```
+*[Adjunto: apartado «Componentes software» del enunciado (CENTRAL, Engine, Monitor, Operator App, Kafka, SQLite, descripción de WM_Central, WM_WS_E, WM_WS_M y WM_FO) y texto de la «Descripción funcional»: alcance, panel de CENTRAL con estados y colores, operarios de campo y estaciones de riego.]*
+
+---
+
+## Fase 2. Revisión de la central, la BD y el protocolo
+
+### Prompt 3
+```
+voy a pasarte mi código, yo solo me encargo de la parte de la central y la base de datos. Ignora de momento el apartado visual de la solución, es decir, que salga en colores los mensajes y tal
+```
+*[Adjunto: primera versión de `central.py` y `db_manager.py`, y de `protocol.py` pegado a continuación.]*
+
+### Prompt 4
+```
+Vale, he modificado el código. Quiero que hagas el mismo análisis con los códigos actualizados:
+```
+*[Adjunto: `central.py` con buzones por estación y cola de órdenes, `db_manager.py` con `operario_actual`, y `protocol.py` con `leer_trama`.]*
+
+### Prompt 5
+```
+vale, revisa ahora. Quiero que tengas en cuenta que esto se va a ejecutar en un laboratorio de una universidad con un número pequeño de elementos, por lo que los fallos mas rebuscados y complejos no creo que tengan lugar
+```
+*[Adjunto: `central.py` y `db_manager.py` actualizados.]*
+
+### Prompt 6
+```
+como va ahora. (Sobre el punto 3, está hecho así a posta. Creo que para que la estación vuelva a estar online tras una fuga se debe dar de alta de nuevo)
+```
+*[Adjunto: `central.py` y `db_manager.py` actualizados.]*
+
+---
+
+## Fase 3. README del protocolo
+
+### Prompt 7
+```
+tengo este readme donde se específica el protocolo de comunicación con la central. Comprueba que esté actualizado y no falte información. Puedes preguntarme cualquier duda que tengas sobre el funcionamiento
+```
+*[Adjunto: README con la especificación del protocolo (pegado dos veces).]*
+
+### Prompt 8
+```
+puedes redactarme el readme según el feedback que me has dado?
+```
+
+### Prompt 9
+```
+sobre los puntos pendientes:
+1: Central solo habla con el monitor. Para la central, monitor y engine es un todo
+2:Nos dijeron en clase que el riego es indefinido hasta que se corte a mano
+3:No se nos has especificado aun
+4:De momento no debemos tener esto en cuenta.
+5:Para bloquear y activar, no podemos usar las mecánicas que ya están implementadas?
+6:No creo que sea tan ambiguo como está ahora
+7:Habíamos pensado que si una estación pide regar es porque ella misma ha checkeado si está en condiciones
+9: después de una fuga, se debe dar de alta de nuevo para reactivarse
+```
+
+---
+
+## Fase 4. Pulido de la central, paso a paso
+
+### Prompt 10
+```
+vale, vamos a continuar puliendo el código de central. Llevo esto:
+```
+*[Adjunto: `central.py` actualizado.]*
+
+### Prompt 11
+```
+Vale, esto son muchas cosas de golpe. Vamos poco a poco con cada problema. Quiero que tengas en cuenta que quiero que esto sea un proceso didáctico, por lo que no me pases código directamente. Dame indicaciones y consejo para saber que debo hacer en cada caso y por qué debo hacer cada cosa
+```
+
+### Prompt 12
+*[Sin texto: se pegó la rama `case "ESTADO"` (fuga) de `tratar_mensaje_estacion` con la comprobación `if estado_previo := ... == "FUGA": return`.]*
+
+### Prompt 13
+*[Sin texto: se pegó la misma rama con la comprobación corregida con paréntesis, `if (estado_previo := ...) == "FUGA": return`.]*
+
+### Prompt 14
+```
+tengo algo de prisa, podrías enseñarme como es el código
+```
+
+### Prompt 15
+*[Sin texto: se adjuntó `central.py` actualizado con `despachar_orden`, `procesar_pendientes`, `bloquear` y `activar`.]*
+
+### Prompt 16
+```
+sobre tu duda, sí, de momento la opción de contactar con todas a la vez no la vamos a implementar.
+El código me ha quedado así:
+```
+*[Adjunto: `tratar_mensaje_estacion` actualizado (REGISTRO y FIN_RIEGO sin depender del ACK informativo).]*
+
+### Prompt 17
+*[Sin texto: se pegó la rama de fuga con el aviso `ALERTA#<operario>` y `ALERTA#ALL`.]*
+
+### Prompt 18
+*[Sin texto: se pegó la rama de fuga con el cambio a `ERROR#<operario>` y el cierre de la válvula movido antes de los avisos.]*
+
+### Prompt 19
+```
+sobre lo de que autoriza y deniega riego no comprueba el estado, es que he supuesto que la estación realiza las comprobaciones necesarias antes de aceptar o denegar la petición
+```
+
+### Prompt 20
+```
+Como quedaría entonces deniega y acepta?
+```
+*[Adjunto: rama de fuga reordenada, pegada en dos versiones con distinta indentación.]*
+
+### Prompt 21
+```
+sí
+```
+
+### Prompt 22
+*[Sin texto: se pegó la creación del `KafkaProducer` con `max_block_ms` y la función `notificar_operario` con comprobación de argumentos.]*
+
+### Prompt 23
+```
+le he puesto 5 segundos al productos.
+```
+*[Adjunto: nueva versión de `notificar_operario`.]*
+```
+He decidido no duplicar los mensajes de central
+```
+
+### Prompt 24
+```
+pero por que mandamos un mensaje a la central por Kafka?
+```
+
+### Prompt 25
+*[Sin texto: se pegó el caso `FIN_RIEGO` de `tratar_mensaje_estacion` y la función `notificar_operario` actualizada (salida silenciosa para el destinatario `CENTRAL`).]*
+
+### Prompt 26
+```
+He cambiado el flush a 5
+```
+*[Adjunto: caso `FIN_RIEGO` corregido, con el orden leer–cambiar–avisar.]*
+
+### Prompt 27
+*[Sin texto: se pegó la función `desempaquetar` de `protocol.py` con la comprobación de ACK/NACK/ENQ añadida al principio.]*
+
+### Prompt 28
+```
+venga, enseñame
+```
+
+### Prompt 29
+*[Sin texto: se pegó el bucle principal de `manejar_hilo` con la comprobación de ACK/NACK sueltos usando `return`.]*
+
+### Prompt 30
+```
+vamos con los últimos retoques
+```
+
+### Prompt 31
+```
+servidor.setsockopt(servidor.SOL_SOCK, servidor.SO_REUSEADDR, 1)
+```
+
+---
+
+## Fase 5. Revisión exhaustiva y despliegue
+
+### Prompt 32
+```
+vale, creo que y está todo. Te voy a volver a pasar el código de todo lo que he hecho. Quiero que lo revises exhaustivamente y me comentes qué fallos tiene. Quiero que me digas solo los fallos que provoquen fallos o situaciones peligrosas. Casos límites y similares déjalo como un apunte de posibles mejoras.
+```
+*[Adjunto: `central.py`, `db_manager.py` y `protocol.py` completos.]*
+
+### Prompt 33
+```
+Este es el código que tengo. Si algo no está bien, modifícalo tu porfa. Avísame de los cambios que hagas
+```
+*[Adjunto: `central.py` completo.]*
+
+### Prompt 34
+```
+hola, estoy haciendo el docker compose ya. Crees que este serviría?
+```
+*[Adjunto: primer `docker-compose.yml` con Kafka y la central.]*
+
+### Prompt 35
+```
+Un momento, quiero que me. hagas el compose teniendo en cuenta las siguientes cosas:
+1: He creado 3 inbound rules en AWS para TCP y los puertos 22, 8080 y 9092 (0.0.0.0 en todas).
+2:Tengo un workflow de GitHub con esta forma:
+```
+*[Adjunto: workflow de GitHub Actions «Despliegue en AWS» (SSH con `appleboy/ssh-action`: `git pull` y `docker compose up -d --build`).]*
+
+### Prompt 36
+```
+el docker file es este:
+```
+*[Adjunto: Dockerfile de la central.]*
+
+### Prompt 37
+```
+vale, ya tengo los códigos y creada una instancia en AWS con los puertos 8080 y 9092 abiertos para tcp. En el servidor ya hay una copia de central con docker. He estado probando un poco. Puede que haya alguna incompatibilidad entre kafka-python y las últimas versiones de python<'
+```
+
+---
+
+## Fase 6. Adaptación a la guía de corrección
+
+### Prompt 38
+```
+me han pasado esta guía de corrección. Crees que mi código de la central cumple con ella?
+```
+*[Adjunto: `Practica_SD_WaterManagement_2026_2027_GuiaCorreccion.pdf` y `WM_Central.py`.]*
+
+### Prompt 39
+*[Sin texto: se pegó el caso `REGISTRO` con la distinción entre registro duplicado y re-registro, y la función `iniciar_kafka` con la creación del consumidor dentro del `try`.]*
+
+### Prompt 40
+*[Sin texto: se pegó `iniciar_kafka` con `consumidor = None`, el `finally` que lo cierra y la espera de 2 s.]*
+
+### Prompt 41
+```
+me podrías mostrar como quedaría ese código?
+```
+
+### Prompt 42
+```
+pero eso por qué es necesario implementarlo?
+```
+
+### Prompt 43
+```
+no voy a implementar lo de la detección de silencio, no lo veo necesario. Podemos pasar al siguiente punto a mejorar en la guía
+```
+
+### Prompt 44
+```
+como harías ese código?
+```
+
+### Prompt 45
+```
+Está bien? Si es así pasemos al siguiente punto de mejora
+```
+*[Adjunto: menú de CENTRAL con `ACCIONES_MENU` y `orden_menu` para enviar órdenes a una o a todas las estaciones (pegado dos veces).]*
+
+### Prompt 46
+```
+sinceramente no se como escribir ese código, me lo das?
+```
+
+### Prompt 47
+```
+pero piensa que me conecto por ssh a AWS. Eso funcionaría?
+```
+
+### Prompt 48
+```
+cuál es el siguiente paso?
+```
+
+### Prompt 49
+```
+vale, vamos a ir paso por paso en este apartado
+```
+
+### Prompt 50
+```
+tengo unas dudas.
+1 Ahora con esta nueva tabla ya no hace falta tener guardado el volumen dentro de la tabla de estación?
+2 Para que guardar el inicio si va a ser siempre un 0, no sería mejor guardar directamente el tiempo que tarda y ya?
+3 Por qué iniciar riego tiene que comprobar que no haya un riego abierto? La estación solo permite iniciar un riego si su estado es Disponible. Si la estación estuviera regando ya no estaría en estado disponible
+```
+
+### Prompt 51
+```
+una duda rápida, Como inicio la central en AWS una vez he hecho docker compose up -d --build
+```
+
+### Prompt 52
+```
+vale, entonces como quedaría el código con la nueva mejora?
+```
+
+### Prompt 53
+```
+Esto así estaría bien?
+```
+*[Adjunto: `WM_Central.py` con la integración de la tabla `riegos`.]*
+
+---
+
+## Fase 7. Revisión global y entrega
+
+### Prompt 54
+```
+Esto es todo el código que tiene nuestra práctica. Creo que es bastante difinitivo. Quiero que lo analices, veas si hay algún fallo y me actualices el readme acorde con lo que tenemos hecho
+```
+*[Adjunto: `WM_Central.py`, `db_manager.py`, `panel.py`, `protocol.py`, `WM_WS_M.py`, `WM_WS_E.py`, `WM_FO.py`, `docker-compose.yml`, los Dockerfiles, `requirements.txt`, `lanzar_estaciones.sh`, `lanzar_operarios.sh`, `readme.md` y una copia de `water_management-db`.]*
+
+### Prompt 55
+```
+puedes pasarme el historial con todos los promts que te he mandado? Los exigen para la memoria
+```
