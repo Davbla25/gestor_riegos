@@ -41,7 +41,7 @@ services:
     # La BD (SQLite) se crea en el directorio de trabajo. Lo movemos a /data, que es un volumen con nombre,
     # para que sobreviva a los despliegues. El código sigue en /app/wm_central (viene en la imagen).
     working_dir: /data
-    entrypoint: ["python", "-u", "/app/wm_central/WM_Central.py"]
+    entrypoint: ["python", "-u", "/app/WM_Central/WM_Central.py"]
     command: ["8080", "kafka:19092"]
     volumes:
       - central_data:/data
