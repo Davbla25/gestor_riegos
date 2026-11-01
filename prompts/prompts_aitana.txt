@@ -1,0 +1,76 @@
+Metodología de Desarrollo
+
+"¿Cómo puedes guiarme en el diseño algorítmico del Monitor y el Engine sin proporcionarme bloques de código completos?"
+
+Arquitectura de Red (Sockets)
+
+"¿Cómo diseño un bucle asíncrono con BlockingIOError para que el Monitor actúe como puente bidireccional entre la Central y el Engine?"
+
+"¿El Engine y el Monitor deben compartir el mismo identificador de estación (WS) de cara a las comunicaciones con la Central?"
+
+Integración de Kafka (Operarios)
+
+"¿Cómo utilizo la librería threading para ejecutar un consumidor de Kafka en segundo plano sin bloquear el menú interactivo principal?"
+
+"¿Es necesario o correcto implementar conexiones de Kafka directamente en los módulos del Monitor y el Engine?"
+
+Desarrollo de Interfaces y Estados
+
+"¿Cómo aplico transiciones de estado y códigos de colores ANSI en la terminal de la Central para cumplir con las especificaciones del sistema?"
+
+"¿Resulta indispensable programar una interfaz gráfica compleja para la evaluación o basta con una vista formateada avanzada en la propia terminal?"
+Gestión del código fuente:
+
+"¿Cómo puedo revertir mi repositorio a un commit específico de Git sin perder mis archivos actuales?"
+
+Control de logs en consola (Central):
+
+"¿Cómo filtro o silencio los mensajes periódicos de métricas en un socket de Python para evitar que inunden el menú interactivo de la consola?"
+
+Gestión de tiempos de espera (Monitor):
+
+"¿Cómo soluciono un bucle infinito de conexiones en un cliente de sockets causado por un timeout demasiado corto durante la respuesta inicial del servidor?"
+
+Conexiones fantasma (Docker y TCP):
+
+"¿Cómo detecto 'conexiones fantasma' en un servidor TCP en Python cuando los contenedores cliente se cierran abruptamente con docker stop y el sistema operativo no envía el paquete de cierre?"
+
+Automatización de despliegues (Bash):
+
+"¿Cómo creo un script en Bash que construya imágenes Docker, elimine contenedores de ejecuciones anteriores y lance múltiples terminales interactivas automáticamente?"
+
+Redes en sistemas distribuidos (Kafka):
+
+"¿Por qué un cliente de Kafka en Docker no puede conectarse a un broker remoto y qué configuración de 'advertised listeners' o firewall debo revisar?"
+
+Interfaz de usuario en terminal (FO):
+
+"¿Cómo simulo un panel en tiempo real en la terminal que limpie la pantalla y aplique colores ANSI dependiendo del estado recibido en un mensaje?"
+
+Tolerancia a fallos en el arranque (Monitor):
+
+"¿Cómo implemento un periodo de gracia (temporizador) en Python para retrasar la evaluación de un socket y evitar falsas alarmas de avería mientras el nodo secundario termina de arrancar?"
+
+Cierre elegante de conexiones (Monitor):
+
+"¿Cómo capturo la señal de apagado (SIGTERM o Ctrl+C) en un contenedor Docker para enviar un último mensaje de desconexión al servidor antes de destruir el socket?"
+
+Detección de caídas indirectas (FO a Central):
+
+"¿Cómo puede un cliente detectar que el servidor final se ha caído si se comunican de forma asíncrona a través de un broker Kafka que siempre está online?"
+
+Orquestación de tareas (FO Ficheros):
+
+"¿Cuál es la mejor manera de probar un script que lee un fichero de texto con identificadores y automatiza una secuencia de riegos con tiempos de espera programados?"
+
+Resiliencia de datos (Store & Forward en Monitor):
+
+"¿Cómo diseño un mecanismo 'Store & Forward' con una cola en Python que guarde las métricas locales críticas si no hay red, y las envíe de golpe en cuanto se recupere la conexión?"
+
+Auto-recuperación de clientes (FO):
+
+"¿Cómo programo una lógica de auto-recuperación en un menú interactivo para que, al detectar un timeout del servidor, bloquee la pantalla y espere en bucle hasta lograr registrarse de nuevo?"
+
+Depuración de errores (Scope de variables):
+
+"¿Por qué obtengo un UnboundLocalError: cannot access local variable en Python y cómo se relaciona esto con la indentación de los bloques condicionales?"
