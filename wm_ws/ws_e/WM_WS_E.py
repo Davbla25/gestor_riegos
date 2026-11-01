@@ -172,7 +172,7 @@ def WM_WS_E(args):
                             enviar(cliente, f"METRICAS#{ID_ESTACION}#{CAUDAL}#{round(volumen, 2)}")
                             print(f"{AZUL}[RIEGO] Válvula cerrada. Total regado: {round(volumen, 2)} L{RESET}")
                         regando = False
-                        enviar(cliente, f"FIN_RIEGO#{ID_ESTACION}")
+                        enviar(cliente, f"FIN_RIEGO#{ID_ESTACION}#{round(volumen, 2)}")
                     elif accion == "BLOQUEAR":
                         regando = False
                         bloqueada = True

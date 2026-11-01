@@ -4,6 +4,7 @@ import common.protocol
 import os
 import argparse
 import sys
+import signal
 
 # Códigos de colores ANSI para la consola
 VERDE = "\033[92m"
@@ -119,6 +120,10 @@ def reenviar_al_engine(conexion, mensaje):
     except OSError:
         return False  
 
+def manejador_sigterm(signum, frame):
+    print(f"\n{AMARILLO}[CIERRE] Contenedor detenido (SIGTERM){RESET}")
+    sys.exit(0)
+
 def WM_WS_M(args):
     IP_CENTRAL, PUERTO_CENTRAL = args.central
     IP_LOCAL, PUERTO_LOCAL = args.ip_local, args.puerto_local
@@ -140,6 +145,7 @@ def WM_WS_M(args):
     estado_enviado = None
     cola_ordenes = []
     t_salud = t_respuesta = t_latido = 0.0
+    t_desconexion = time.monotonic()
 
     try:
         while True:
@@ -150,10 +156,7 @@ def WM_WS_M(args):
                 if cliente:
                     cliente.close()
                 cliente = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                
-                # [!] AÑADIDO: Dar 5 segundos a la Central para procesar la base de datos
                 cliente.settimeout(5.0) 
-                
                 try:
                     cliente.connect((IP_CENTRAL, PUERTO_CENTRAL))
                     cliente.send(common.protocol.ENQ)
@@ -165,11 +168,9 @@ def WM_WS_M(args):
                             print(f"{VERDE}[INFO] Conectado y registrado en WM_Central{RESET}")
                             central_conectada = True
                             estado_enviado = None 
-                            
-                            # [!] AÑADIDO: Restaurar el timeout rápido para el funcionamiento normal
-                            cliente.settimeout(TICK) 
+                            cliente.settimeout(TICK)
                 except OSError:
-                    pass
+                    pass 
 
             # --- 2. ACEPTAR ENGINE (Local) ---
             if conexion_engine is None:
@@ -180,7 +181,7 @@ def WM_WS_M(args):
                     print(f"{VERDE}[INFO] Engine conectado desde {direccion}{RESET}")
                     if bloqueada:
                         reenviar_al_engine(conexion_engine, "BLOQUEAR")
-                except BlockingIOError: # <-- AQUÍ ESTABA EL FALLO (Debe ser BlockingIOError, no socket.timeout)
+                except BlockingIOError:
                     pass
 
             # --- 3. GESTIONAR ENGINE (Local) ---
@@ -191,24 +192,24 @@ def WM_WS_M(args):
                     if mensaje_engine:
                         t_respuesta = ahora
                         partes = mensaje_engine.split('#')
+                        
                         if partes[0] == "SALUD":
                             nueva_averia = (len(partes) < 3 or partes[2] != "OK")
                             if nueva_averia != averia:
                                 averia = nueva_averia
                                 if averia:
                                     print(f"{ROJO}[ALERTA LOCAL] El Engine reporta AVERÍA (Fuga){RESET}")
-                                    # Opcional: Reenviar la avería a la Central aquí si no lo hace ya el bucle principal
                                 else:
                                     print(f"{VERDE}[INFO LOCAL] El Engine reporta estado OK{RESET}")
                         else:
                             para_central = mensaje_engine
-                            # Añadir estos print para reflejar visualmente la actividad local
                             if partes[0] == "INICIAR_RIEGO":
                                 print(f"{VERDE}[ACCIÓN LOCAL] El Engine ha iniciado el riego manualmente{RESET}")
                             elif partes[0] == "FIN_RIEGO":
                                 print(f"{AZUL}[ACCIÓN LOCAL] El Engine ha detenido el riego manualmente{RESET}")
                             elif partes[0] == "METRICAS":
                                 print(f"{AZUL}[MÉTRICAS] Reenviando métricas: Caudal {partes[2]} L/m - Vol: {partes[3]} L{RESET}")
+
                     if ahora - t_salud >= INTERVALO_SALUD:
                         t_salud = ahora
                         try:
@@ -222,18 +223,21 @@ def WM_WS_M(args):
                     conexion_engine.close()
                     conexion_engine = None
                     averia = True
+                    t_desconexion = ahora
 
             # --- 4. COMUNICACIÓN CON CENTRAL (Solo si está conectada) ---
             if central_conectada:
                 try:
-                    # Enviar tramas pendientes
                     if para_central:
                         print(f"{AZUL}[PUENTE] Reenviando a Central: {para_central}{RESET}")
                         if not enviar_a_central(cliente, para_central, cola_ordenes):
                             raise ConnectionError("Fallo al enviar trama a la Central")
 
-                    # Enviar estados
-                    estado = "FUGA" if (averia or conexion_engine is None) else "OK"
+                    if conexion_engine is None and (ahora - t_desconexion < 3.0):
+                        estado = estado_enviado if estado_enviado else "OK"
+                    else:
+                        estado = "FUGA" if (averia or conexion_engine is None) else "OK"
+                        
                     if estado == "OK" and estado_enviado == "FUGA":
                         print(f"{VERDE}[RECUPERACIÓN] Avería resuelta: registrando estación{RESET}")
                         if enviar_a_central(cliente, f"REGISTRO#{ID_ESTACION}#{UBICACION}", cola_ordenes):
@@ -247,7 +251,6 @@ def WM_WS_M(args):
                         estado_enviado = estado
                         t_latido = ahora
 
-                    # Leer órdenes
                     if cola_ordenes:
                         mensaje = cola_ordenes.pop(0)
                     else:
@@ -267,7 +270,6 @@ def WM_WS_M(args):
                             cliente.send(common.protocol.NACK)
                             mensaje = None
 
-                    # Ejecutar órdenes
                     if mensaje:
                         accion = mensaje.split('#')[0]
                         if accion == "INICIAR_RIEGO":
@@ -296,10 +298,20 @@ def WM_WS_M(args):
             time.sleep(0.05) 
             
     finally:
-        if cliente: cliente.close()
+        if cliente:
+            if central_conectada:
+                try:
+                    print(f"{AMARILLO}[CIERRE] Avisando a la Central de la desconexión...{RESET}")
+                    mensaje_despedida = f"ESTADO#{ID_ESTACION}#DESCONECTADA"
+                    cliente.send(common.protocol.empaquetar(mensaje_despedida))
+                    time.sleep(0.5) 
+                except Exception:
+                    pass
+            cliente.close()
         servidor.close()
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, manejador_sigterm)
     try:
         WM_WS_M(leer_argumentos())
     except KeyboardInterrupt:

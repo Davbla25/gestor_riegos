@@ -317,8 +317,19 @@ def menu():
                 print("[ERROR] El ID de la estación no puede estar vacío ni contener '#'")
                 continue
             comando = "PETICION_RIEGO" if opcion == "1" else "PETICION_PARADA"
+            
+            # --- INICIO MODIFICACIÓN ---
+            evento_respuesta.clear()
             if enviar(f"{comando}#{ID_OPERARIO}#{destino}"):
-                print(f"[ENVIADO] {comando} a {destino}")
+                print(f"{AZUL}[ENVIADO] {comando} a {destino}. Esperando respuesta...{RESET}")
+                
+                # Esperamos respuesta y reconectamos si falla
+                if not evento_respuesta.wait(PLAZO_RESPUESTA):
+                    print(f"{ROJO}[ERROR] La Central no responde (¿está desconectada?){RESET}")
+                    print(f"{AMARILLO}[RECUPERACIÓN] Esperando a que la Central vuelva a estar online...{RESET}")
+                    registrar()
+                    print(f"{VERDE}[RECUPERACIÓN] Reconexión exitosa. Por favor, repite la orden.{RESET}")
+
         elif opcion == "3":
             if hilo_fichero and hilo_fichero.is_alive():
                 print("[AVISO] Ya hay una ejecución de fichero en curso")
@@ -327,8 +338,18 @@ def menu():
             hilo_fichero = threading.Thread(target=ejecutar_fichero, args=(ruta,), daemon=True)
             hilo_fichero.start()
         elif opcion == "4":
+            # --- INICIO MODIFICACIÓN ---
+            evento_respuesta.clear()
+            # Asegúrate de enviar la etiqueta #FO para que la Central te reconozca
             if enviar(f"LISTAR_ESTACIONES#{ID_OPERARIO}#FO"):
-                print("[ENVIADO] Solicitando lista de estaciones a la Central...")
+                print(f"{AZUL}[ENVIADO] Solicitando lista de estaciones a la Central...{RESET}")
+                
+                # Esperamos respuesta y reconectamos si falla
+                if not evento_respuesta.wait(PLAZO_RESPUESTA):
+                    print(f"{ROJO}[ERROR] La Central no responde (¿está desconectada?){RESET}")
+                    print(f"{AMARILLO}[RECUPERACIÓN] Esperando a que la Central vuelva a estar online...{RESET}")
+                    registrar()
+                    print(f"{VERDE}[RECUPERACIÓN] Reconexión exitosa. Por favor, vuelve a pulsar 4.{RESET}")
         elif opcion == "5":
             return
         else:
